@@ -200,25 +200,29 @@ export async function sendTypingAction(ctx: Context): Promise<void> {
 }
 
 /**
+ * Helper utility to pause execution for a given number of milliseconds.
+ */
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
  * Sends the official Elite Force loading animated sticker (#6 Trophy 🏆).
  * Pack: https://t.me/addstickers/EliteForceWeb3
  * Returns the sent message ID, or null if sending failed.
  */
 export async function sendLoadingSticker(ctx: Context): Promise<number | null> {
   try {
-    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
-    const replyParams =
-      isGroup && ctx.message?.message_id
-        ? { message_id: ctx.message.message_id }
-        : undefined;
-
-    const stickerMsg = await ctx.replyWithSticker(LOADING_STICKER_FILE_ID, {
-      reply_parameters: replyParams,
+    const stickerMsg = await ctx.replyWithSticker(LOADING_STICKER_FILE_ID);
+    logger.info('Animated loading sticker sent to chat', {
+      messageId: stickerMsg.message_id,
+      chatId: ctx.chat?.id,
     });
     return stickerMsg.message_id;
   } catch (err) {
-    logger.debug('Failed to send loading sticker', {
+    logger.warn('Failed to send animated loading sticker', {
       error: err instanceof Error ? err.message : String(err),
+      chatId: ctx.chat?.id,
     });
     return null;
   }
@@ -234,9 +238,14 @@ export async function deleteLoadingSticker(
   if (!messageId || !ctx.chat?.id) return;
   try {
     await ctx.api.deleteMessage(ctx.chat.id, messageId);
+    logger.info('Animated loading sticker removed from chat', {
+      messageId,
+      chatId: ctx.chat.id,
+    });
   } catch (err) {
-    logger.debug('Failed to delete loading sticker', {
+    logger.debug('Failed to delete loading sticker (might already be deleted)', {
       error: err instanceof Error ? err.message : String(err),
+      messageId,
     });
   }
 }

@@ -6,6 +6,7 @@ import {
   sendTypingAction,
   sendLoadingSticker,
   deleteLoadingSticker,
+  sleep,
 } from '../utils/telegram';
 import { logger } from '../utils/logger';
 
@@ -114,10 +115,19 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
+  const startTime = Date.now();
   const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
     const response = await generateSupportResponse(userId, query);
+
+    // Ensure the animated sticker is visible for at least 1500ms before deletion
+    const elapsed = Date.now() - startTime;
+    const minDisplayMs = 1500;
+    if (elapsed < minDisplayMs) {
+      await sleep(minDisplayMs - elapsed);
+    }
+
     await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, response, { replyToMessage: true });
   } catch (error) {
@@ -210,10 +220,19 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
+  const startTime = Date.now();
   const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
     const response = await generateSupportResponse(userId, queryToProcess);
+
+    // Ensure the animated sticker is visible for at least 1500ms before deletion
+    const elapsed = Date.now() - startTime;
+    const minDisplayMs = 1500;
+    if (elapsed < minDisplayMs) {
+      await sleep(minDisplayMs - elapsed);
+    }
+
     await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, response, { replyToMessage: isGroup });
   } catch (error) {
