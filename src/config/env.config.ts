@@ -5,7 +5,10 @@ dotenv.config();
 
 export interface AppConfig {
   readonly telegramBotToken: string;
-  readonly geminiApiKey: string;
+  readonly aiProvider: 'openrouter' | 'gemini';
+  readonly openrouterApiKey?: string;
+  readonly openrouterModel: string;
+  readonly geminiApiKey?: string;
   readonly geminiModel: string;
   readonly adminUserIds: ReadonlySet<number>;
   readonly botMode: 'polling' | 'webhook';
@@ -24,7 +27,6 @@ export interface AppConfig {
  */
 function loadAndValidateConfig(): AppConfig {
   const telegramBotToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
-  const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
 
   // Validate critical Telegram token
   if (!telegramBotToken || telegramBotToken === 'your_telegram_bot_token_here') {
@@ -41,16 +43,47 @@ function loadAndValidateConfig(): AppConfig {
     );
   }
 
-  // Validate critical Gemini API key
-  if (!geminiApiKey || geminiApiKey === 'your_gemini_api_key_here') {
-    throw new Error(
-      'Startup Error: GEMINI_API_KEY is missing or set to a placeholder. ' +
-      'Please supply a valid API key from Google AI Studio in your environment.'
-    );
-  }
+  // AI Provider configuration
+  const rawOpenRouterKey = process.env.OPENROUTER_API_KEY?.trim();
+  const openrouterApiKey =
+    rawOpenRouterKey && rawOpenRouterKey !== 'your_openrouter_api_key_here'
+      ? rawOpenRouterKey
+      : undefined;
 
-  // Gemini model (default to modern, fast, free-tier friendly Flash model)
+  const openrouterModel = process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o';
+
+  const rawGeminiKey = process.env.GEMINI_API_KEY?.trim();
+  const geminiApiKey =
+    rawGeminiKey && rawGeminiKey !== 'your_gemini_api_key_here'
+      ? rawGeminiKey
+      : undefined;
+
   const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+
+  const specifiedProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
+  const aiProvider: 'openrouter' | 'gemini' =
+    specifiedProvider === 'openrouter' || specifiedProvider === 'gemini'
+      ? specifiedProvider
+      : openrouterApiKey
+      ? 'openrouter'
+      : 'gemini';
+
+  // Ensure at least one working AI key is present
+  if (aiProvider === 'openrouter' && !openrouterApiKey) {
+    if (geminiApiKey) {
+      // Fallback automatically to Gemini
+    } else {
+      throw new Error(
+        'Startup Error: OPENROUTER_API_KEY is missing or set to a placeholder while AI_PROVIDER is set to openrouter.'
+      );
+    }
+  } else if (aiProvider === 'gemini' && !geminiApiKey) {
+    if (!openrouterApiKey) {
+      throw new Error(
+        'Startup Error: GEMINI_API_KEY is missing. Please supply a valid key in your environment.'
+      );
+    }
+  }
 
   // Parse admin user IDs
   const rawAdminIds = process.env.ADMIN_USER_IDS?.trim() || '';
@@ -104,6 +137,9 @@ function loadAndValidateConfig(): AppConfig {
 
   return {
     telegramBotToken,
+    aiProvider,
+    openrouterApiKey,
+    openrouterModel,
     geminiApiKey,
     geminiModel,
     adminUserIds,
@@ -127,6 +163,9 @@ export function sanitizeLogString(message: string): string {
   let sanitized = message;
   if (env.telegramBotToken) {
     sanitized = sanitized.split(env.telegramBotToken).join('[REDACTED_TELEGRAM_TOKEN]');
+  }
+  if (env.openrouterApiKey) {
+    sanitized = sanitized.split(env.openrouterApiKey).join('[REDACTED_OPENROUTER_KEY]');
   }
   if (env.geminiApiKey) {
     sanitized = sanitized.split(env.geminiApiKey).join('[REDACTED_GEMINI_KEY]');

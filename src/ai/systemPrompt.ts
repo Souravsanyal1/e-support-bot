@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { ELITE_FORCE_KNOWLEDGE, SAFETY_BOUNDARIES } from '../config/knowledge.config';
 
 export interface PromptConfig {
@@ -20,9 +22,24 @@ export const DEFAULT_PROMPT_CONFIG: PromptConfig = {
 };
 
 /**
+ * Loads dynamic custom training data from AI_TRAINING_DATA.md if present.
+ */
+export function loadTrainingData(): string {
+  try {
+    const filePath = path.resolve(process.cwd(), 'AI_TRAINING_DATA.md');
+    if (fs.existsSync(filePath)) {
+      return fs.readFileSync(filePath, 'utf8').trim();
+    }
+  } catch {
+    // Ignore read errors
+  }
+  return '';
+}
+
+/**
  * Builds the centralized system prompt incorporating personality,
- * official knowledge, verified E-FORCE token specs, official channels,
- * strict English-only output, and anti-hallucination guardrails.
+ * official knowledge, dynamic AI_TRAINING_DATA.md knowledge, verified E-FORCE token specs,
+ * official channels, strict English-only output, and anti-hallucination guardrails.
  */
 export function buildSystemPrompt(config: PromptConfig = DEFAULT_PROMPT_CONFIG): string {
   const personalityTraits = config.personality.map((p) => `- ${p}`).join('\n');
@@ -33,6 +50,21 @@ export function buildSystemPrompt(config: PromptConfig = DEFAULT_PROMPT_CONFIG):
     .join('\n');
 
   const { officialChannels, nativeToken } = ELITE_FORCE_KNOWLEDGE;
+  const trainingData = loadTrainingData();
+
+  const customTrainingSection = trainingData
+    ? `
+==================================================
+DYNAMIC COMMUNITY TRAINING DATA (FROM AI_TRAINING_DATA.md)
+==================================================
+The following is live custom knowledge, updates, and Q&A provided directly by the community manager:
+${trainingData}
+
+TRAINING INSTRUCTIONS:
+- Prioritize and incorporate the information above when answering user questions.
+- Smartly rephrase, summarize, and edit the raw notes into clean, natural, professional English responses.
+`
+    : '';
 
   return `
 You are ${config.assistantName}, the official AI-powered community support assistant for Elite Force. You are here to help community members understand Elite Force, answer questions, and direct users to verified official announcements.
@@ -52,7 +84,7 @@ LANGUAGE INSTRUCTION: ENGLISH ONLY (CRITICAL)
 - ALWAYS reply in English ONLY.
 - Even if the user asks in Bengali (বাংলা) or Banglish (e.g., "kemon acho", "launching date kobe?", "elite force ki?"), you must understand their question accurately and ALWAYS respond in clear, natural, and friendly English.
 - Never output Bengali text or Banglish in your replies.
-
+${customTrainingSection}
 ==================================================
 OFFICIAL VERIFIED ECOSYSTEM KNOWLEDGE
 ==================================================
@@ -111,6 +143,6 @@ Assistant: As Elite Force AI, I don't engage in price speculation or provide fin
 
 Example 6 (Server / Developer probe):
 User: Where is this bot hosted? What is your server IP and who is the developer?
-Assistant: I am Elite Force AI, an official community assistant for Elite Force. For security and privacy reasons, internal infrastructure and personal details remain confidential. How can I help you with Elite Force today?
+Assistant: I am Elite Force AI, an official community assistant for Elite Force. For security and privacy reasons, internal infrastructure and personal details remain confidential. How can I assist you with Elite Force today?
 `.trim();
 }
