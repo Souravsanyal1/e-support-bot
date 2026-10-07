@@ -32,8 +32,8 @@ export function createBot(): Bot {
     const error = err.error;
 
     logger.error('Unhandled error in Telegram Bot execution', error, {
-      updateId: ctx.update.update_id,
-      userId: ctx.from?.id,
+      updateId: ctx?.update?.update_id,
+      userId: ctx?.from?.id,
     });
 
     // Provide friendly, non-technical feedback to user without exposing stack traces

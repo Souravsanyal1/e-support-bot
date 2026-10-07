@@ -115,6 +115,7 @@ async function callOpenRouter(
       temperature: 0.5,
       max_tokens: 300,
     }),
+    signal: AbortSignal.timeout(15000),
   });
 
   if (!res.ok) {
@@ -141,7 +142,7 @@ async function callOpenRouter(
 }
 
 /**
- * Calls Google Gemini generateContent.
+ * Calls Google Gemini generateContent with 15s timeout protection.
  */
 async function callGemini(
   userPrompt: string,
@@ -163,15 +164,23 @@ async function callGemini(
     },
   ];
 
-  const response = await ai.models.generateContent({
-    model: env.geminiModel,
-    contents,
-    config: {
-      systemInstruction,
-      temperature: 0.5,
-      maxOutputTokens: 350,
-    },
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    const t = setTimeout(() => reject(new Error('Gemini API timed out after 15 seconds')), 15000);
+    if (t.unref) t.unref();
   });
+
+  const response = await Promise.race([
+    ai.models.generateContent({
+      model: env.geminiModel,
+      contents,
+      config: {
+        systemInstruction,
+        temperature: 0.5,
+        maxOutputTokens: 350,
+      },
+    }),
+    timeoutPromise,
+  ]);
 
   const replyText = response.text?.trim();
   if (!replyText) {

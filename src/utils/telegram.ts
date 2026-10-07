@@ -121,7 +121,7 @@ export async function safeReply(
     let allSent = true;
     for (let i = 0; i < chunks.length; i++) {
       const { text: chunkText, entities: chunkEntities } = chunks[i];
-      const replyParameters = i === 0 ? replyParamsBase : undefined;
+      let replyParameters = i === 0 ? replyParamsBase : undefined;
 
       try {
         await ctx.reply(chunkText, {
@@ -130,13 +130,31 @@ export async function safeReply(
             : undefined,
           reply_parameters: replyParameters,
         } as Parameters<typeof ctx.reply>[1]);
-      } catch {
-        allSent = false;
-        // Fall through to HTML attempt for this chunk
-        try {
-          await ctx.reply(chunkText, { reply_parameters: replyParameters });
-        } catch (err) {
-          logger.error('Entity-mode plain text fallback failed', err);
+      } catch (errTier1) {
+        // If reply_parameters failed (e.g. user deleted message), retry without reply_parameters
+        let retryOk = false;
+        if (replyParameters) {
+          try {
+            replyParameters = undefined;
+            await ctx.reply(chunkText, {
+              entities: chunkEntities.length > 0
+                ? (chunkEntities as Parameters<typeof ctx.reply>[1] extends { entities?: infer E } ? E : never)
+                : undefined,
+            } as Parameters<typeof ctx.reply>[1]);
+            retryOk = true;
+          } catch {
+            retryOk = false;
+          }
+        }
+
+        if (!retryOk) {
+          allSent = false;
+          // Fall through to HTML attempt for this chunk
+          try {
+            await ctx.reply(chunkText, { reply_parameters: replyParameters });
+          } catch (err) {
+            logger.error('Entity-mode plain text fallback failed', err);
+          }
         }
       }
     }
@@ -149,7 +167,7 @@ export async function safeReply(
 
   for (let i = 0; i < htmlChunks.length; i++) {
     const chunk = htmlChunks[i];
-    const replyParameters = i === 0 ? replyParamsBase : undefined;
+    let replyParameters = i === 0 ? replyParamsBase : undefined;
 
     try {
       await ctx.reply(chunk, {
@@ -158,8 +176,18 @@ export async function safeReply(
       });
       continue;
     } catch (err1) {
+      const errMsg1 = err1 instanceof Error ? err1.message : String(err1);
+      if (replyParameters && (errMsg1.includes('reply') || errMsg1.includes('message to be replied not found'))) {
+        replyParameters = undefined;
+        try {
+          await ctx.reply(chunk, { parse_mode: 'HTML' });
+          continue;
+        } catch {
+          // Proceed to Tier 3
+        }
+      }
       logger.warn('HTML with <tg-emoji> rejected by Telegram', {
-        error: err1 instanceof Error ? err1.message : String(err1),
+        error: errMsg1,
       });
     }
 
@@ -171,8 +199,18 @@ export async function safeReply(
       });
       continue;
     } catch (err2) {
+      const errMsg2 = err2 instanceof Error ? err2.message : String(err2);
+      if (replyParameters && (errMsg2.includes('reply') || errMsg2.includes('message to be replied not found'))) {
+        replyParameters = undefined;
+        try {
+          await ctx.reply(stripCustomEmojiTags(chunk), { parse_mode: 'HTML' });
+          continue;
+        } catch {
+          // Proceed to Tier 4
+        }
+      }
       logger.warn('Standard HTML also rejected by Telegram', {
-        error: err2 instanceof Error ? err2.message : String(err2),
+        error: errMsg2,
       });
     }
 
@@ -182,6 +220,15 @@ export async function safeReply(
         reply_parameters: replyParameters,
       });
     } catch (err) {
+      // Last-resort fallback: retry purely plain text with no reply_parameters
+      if (replyParameters) {
+        try {
+          await ctx.reply(stripAllHtmlTags(chunk));
+          continue;
+        } catch (retryErr) {
+          logger.error('Plain text delivery without reply_parameters failed', retryErr);
+        }
+      }
       logger.error('All message delivery tiers failed', err);
       throw err;
     }
