@@ -120,8 +120,27 @@ async function callGemini(
 }
 
 /**
- * Generates an AI community support response using OpenRouter (GPT-4o)
- * or Google Gemini with automatic cross-provider fallback.
+ * Returns which AI provider should be the PRIMARY based on current server hour.
+ *
+ * Schedule (UTC+6 Bangladesh Time):
+ *   12:00 AM → 11:59 AM  →  Google Gemini  (hours 0–11)
+ *   12:00 PM → 11:59 PM  →  OpenRouter     (hours 12–23)
+ *
+ * If the primary fails, the other provider is tried automatically as fallback.
+ */
+function getPrimaryProvider(): 'gemini' | 'openrouter' {
+  const hour = new Date().getHours(); // local server hour (0–23)
+  return hour < 12 ? 'gemini' : 'openrouter';
+}
+
+/**
+ * Generates an AI community support response using a time-based provider schedule.
+ *
+ * Primary schedule:
+ *   00:00 – 11:59  →  Google Gemini
+ *   12:00 – 23:59  →  OpenRouter (GPT-4o)
+ *
+ * If the primary provider fails, the secondary is tried automatically.
  */
 export async function generateSupportResponse(
   userId: number,
@@ -132,65 +151,55 @@ export async function generateSupportResponse(
     return "Hey! 👋 I'm Elite Force AI. How can I help you today?";
   }
 
-  // Retrieve in-memory conversation history for this user
   const history = conversationManager.getHistory(userId);
   let replyText = '';
 
-  try {
-    // Attempt OpenRouter if configured and set as preferred, with Gemini fallback
-    if (env.openrouterApiKey && (env.aiProvider === 'openrouter' || !ai)) {
-      try {
-        replyText = await callOpenRouter(sanitizedPrompt, history);
-      } catch (openRouterError) {
-        logger.warn('OpenRouter failed, falling back to Gemini if available', {
-          error:
-            openRouterError instanceof Error
-              ? openRouterError.message
-              : String(openRouterError),
-        });
+  const primary = getPrimaryProvider();
+  const secondary = primary === 'gemini' ? 'openrouter' : 'gemini';
 
-        if (ai) {
-          replyText = await callGemini(sanitizedPrompt, history);
-        } else {
-          throw openRouterError;
-        }
-      }
-    } else if (ai) {
-      // Gemini preferred with OpenRouter fallback
-      try {
-        replyText = await callGemini(sanitizedPrompt, history);
-      } catch (geminiError) {
-        logger.warn('Gemini failed, falling back to OpenRouter if available', {
-          error:
-            geminiError instanceof Error ? geminiError.message : String(geminiError),
-        });
+  logger.info('AI provider selected by schedule', {
+    hour: new Date().getHours(),
+    primary,
+    secondary,
+  });
 
-        if (env.openrouterApiKey) {
-          replyText = await callOpenRouter(sanitizedPrompt, history);
-        } else {
-          throw geminiError;
-        }
-      }
+  async function tryProvider(provider: 'gemini' | 'openrouter'): Promise<string> {
+    if (provider === 'gemini') {
+      if (!ai) throw new Error('Gemini client not initialized (no API key)');
+      return await callGemini(sanitizedPrompt, history);
     } else {
-      throw new Error('No AI provider credentials (OpenRouter or Gemini) configured.');
+      if (!env.openrouterApiKey) throw new Error('OpenRouter API key not configured');
+      return await callOpenRouter(sanitizedPrompt, history);
+    }
+  }
+
+  try {
+    // Try the scheduled primary provider first
+    try {
+      replyText = await tryProvider(primary);
+      logger.info('Primary AI provider responded successfully', { provider: primary });
+    } catch (primaryError) {
+      logger.warn(`Primary AI provider (${primary}) failed, switching to fallback (${secondary})`, {
+        error: primaryError instanceof Error ? primaryError.message : String(primaryError),
+      });
+
+      // Automatic fallback to the other provider
+      replyText = await tryProvider(secondary);
+      logger.info('Fallback AI provider responded successfully', { provider: secondary });
     }
 
-    // Persist this turn into the user's sliding conversation window
+    // Persist this turn into the sliding conversation window
     conversationManager.addMessage(userId, 'user', sanitizedPrompt);
     conversationManager.addMessage(userId, 'model', replyText);
 
     return replyText;
   } catch (error) {
-    // Log the error securely (logger redacts all keys and secrets)
-    logger.error('All AI providers failed to generate content', error, {
-      userId,
-      provider: env.aiProvider,
-    });
+    logger.error('All AI providers failed to generate content', error, { userId });
 
-    // Return a safe, sanitized, user-friendly response - never leak system traces
     return (
       "I'm temporarily experiencing a connection delay while consulting my knowledge base. " +
-      "Please give me a moment and ask your question again!"
+      'Please give me a moment and ask your question again!'
     );
   }
 }
+
