@@ -121,9 +121,9 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   try {
     const response = await generateSupportResponse(userId, query);
 
-    // Ensure the animated sticker is visible for at least 2500ms before deletion
+    // Ensure the animated sticker is visible for at least 3000ms before deletion
     const elapsed = Date.now() - startTime;
-    const minDisplayMs = 2500;
+    const minDisplayMs = 3000;
     if (elapsed < minDisplayMs) {
       await sleep(minDisplayMs - elapsed);
     }
@@ -210,15 +210,6 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 
   const queryToProcess = cleanedText || text;
 
-  // Fast path for simple greetings to provide instant natural response
-  const lower = queryToProcess.toLowerCase().replace(/[^\w\s]/g, '').trim();
-  if (lower === 'hello' || lower === 'hi' || lower === 'hey') {
-    await safeReply(ctx, "Hey! 👋 I'm Elite Force AI. How can I help you today?", {
-      replyToMessage: true,
-    });
-    return;
-  }
-
   await sendTypingAction(ctx);
   const startTime = Date.now();
   const loadingStickerId = await sendLoadingSticker(ctx);
@@ -226,9 +217,9 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   try {
     const response = await generateSupportResponse(userId, queryToProcess);
 
-    // Ensure the animated sticker is visible for at least 2500ms before deletion
+    // Ensure the animated sticker is visible for at least 3000ms so user clearly sees the animation
     const elapsed = Date.now() - startTime;
-    const minDisplayMs = 2500;
+    const minDisplayMs = 3000;
     if (elapsed < minDisplayMs) {
       await sleep(minDisplayMs - elapsed);
     }
