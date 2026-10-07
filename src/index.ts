@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import { Server } from 'http';
 import { webhookCallback } from 'grammy';
 import { env } from './config/env.config';
 import { logger } from './utils/logger';
@@ -15,6 +16,7 @@ async function main(): Promise<void> {
   });
 
   const bot = createBot();
+  let httpServer: Server | null = null;
 
   // Setup graceful shutdown handling
   let isShuttingDown = false;
@@ -27,6 +29,10 @@ async function main(): Promise<void> {
     try {
       rateLimiter.destroy();
       conversationManager.destroy();
+
+      if (httpServer) {
+        httpServer.close();
+      }
 
       if (env.botMode === 'polling') {
         await bot.stop();
@@ -43,19 +49,25 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => gracefulShutdown('SIGINT'));
   process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-  if (env.botMode === 'webhook') {
-    // Webhook Mode with Express Server
-    const app = express();
+  // Create Express app for health checks and/or webhooks (crucial for Render / Cloud hosting)
+  const app = express();
 
-    // Health check endpoint (for cloud health monitoring)
-    app.get('/health', (_req: Request, res: Response) => {
-      res.status(200).json({
-        status: 'healthy',
-        service: 'Elite Force AI Bot',
-        uptimeSeconds: Math.floor(process.uptime()),
-      });
+  // Root endpoint for simple browser verification
+  app.get('/', (_req: Request, res: Response) => {
+    res.send('Elite Force AI Bot is online and running! 🚀');
+  });
+
+  // Health check endpoint (for cloud health monitoring & keep-awake pingers)
+  app.get('/health', (_req: Request, res: Response) => {
+    res.status(200).json({
+      status: 'healthy',
+      service: 'Elite Force AI Bot',
+      mode: env.botMode,
+      uptimeSeconds: Math.floor(process.uptime()),
     });
+  });
 
+  if (env.botMode === 'webhook') {
     // Webhook verification middleware
     app.use('/webhook', (req: Request, res: Response, next) => {
       const secretHeader = req.header('x-telegram-bot-api-secret-token');
@@ -73,7 +85,7 @@ async function main(): Promise<void> {
     app.use(express.json());
     app.post('/webhook', webhookCallback(bot, 'express'));
 
-    const server = app.listen(env.port, async () => {
+    httpServer = app.listen(env.port, async () => {
       logger.info(`Webhook server listening on port ${env.port}`);
 
       try {
@@ -90,11 +102,19 @@ async function main(): Promise<void> {
       }
     });
 
-    server.on('error', (err) => {
+    httpServer.on('error', (err) => {
       logger.error('Server encountered a fatal error', err);
     });
   } else {
-    // Polling Mode (Default for free-tier deployments, background workers, and local dev)
+    // Polling Mode: Start health check server on env.port for Render Web Service compatibility
+    httpServer = app.listen(env.port, () => {
+      logger.info(`Health check HTTP server listening on port ${env.port} for Render/Cloud monitoring`);
+    });
+
+    httpServer.on('error', (err) => {
+      logger.warn('HTTP health check server warning (port may already be in use)', { error: err.message });
+    });
+
     try {
       // Ensure any existing webhook is removed before starting polling
       await bot.api.deleteWebhook({ drop_pending_updates: false });
