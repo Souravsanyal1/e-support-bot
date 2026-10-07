@@ -227,22 +227,38 @@ export function escapeHtml(text: string): string {
 export function formatToTelegramHtml(markdownText: string): string {
   if (!markdownText) return '';
 
-  let html = escapeHtml(markdownText);
+  // 1. Protect URLs by replacing them with unique placeholders
+  const urlPlaceholders: string[] = [];
+  let text = markdownText.replace(/(https?:\/\/[^\s\)]+)/g, (url) => {
+    urlPlaceholders.push(url);
+    return `___URL_TOKEN_${urlPlaceholders.length - 1}___`;
+  });
 
-  // Bold: **bold**
+  // 2. Escape raw HTML entities
+  let html = escapeHtml(text);
+
+  // 3. Bold: **bold**
   html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
-  // Italic: *italic* or _italic_
+  // 4. Italic: *italic* or _italic_ (only on word boundaries)
   html = html.replace(/(^|[^*])\*([^*\s][^*]*?[^*\s]|\S)\*(?!\*)/g, '$1<i>$2</i>');
-  html = html.replace(/(^|[^_])_([^_]+?)_(?!_)/g, '$1<i>$2</i>');
+  html = html.replace(/\b_([^_]+?)_\b/g, '<i>$1</i>');
 
-  // Code: `code`
+  // 5. Code: `code`
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  // Links: [label](url)
-  html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>');
+  // 6. Markdown Links: [label](url-placeholder)
+  html = html.replace(/\[([^\]]+)\]\((___URL_TOKEN_(\d+)___)\)/g, (_m, label, _full, idx) => {
+    const rawUrl = urlPlaceholders[Number(idx)];
+    return `<a href="${rawUrl}">${label}</a>`;
+  });
 
-  // Animated custom emojis: single-pass replacement
+  // 7. Restore remaining URLs
+  html = html.replace(/___URL_TOKEN_(\d+)___/g, (_m, idx) => {
+    return urlPlaceholders[Number(idx)];
+  });
+
+  // 8. Animated custom emojis: single-pass replacement
   CUSTOM_EMOJI_REGEX.lastIndex = 0;
   html = html.replace(CUSTOM_EMOJI_REGEX, (match) => {
     const id = CUSTOM_EMOJI_MAP[match];

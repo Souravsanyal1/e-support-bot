@@ -154,8 +154,10 @@ export async function safeReply(
         reply_parameters: replyParameters,
       });
       continue;
-    } catch {
-      logger.debug('HTML with <tg-emoji> rejected, trying standard HTML');
+    } catch (err1) {
+      logger.warn('HTML with <tg-emoji> rejected by Telegram', {
+        error: err1 instanceof Error ? err1.message : String(err1),
+      });
     }
 
     // ── Tier 3: HTML without <tg-emoji> ──────────────────────────────────
@@ -165,8 +167,10 @@ export async function safeReply(
         reply_parameters: replyParameters,
       });
       continue;
-    } catch {
-      logger.debug('Standard HTML rejected, falling back to plain text');
+    } catch (err2) {
+      logger.warn('Standard HTML also rejected by Telegram', {
+        error: err2 instanceof Error ? err2.message : String(err2),
+      });
     }
 
     // ── Tier 4: Plain text ────────────────────────────────────────────────
