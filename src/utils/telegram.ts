@@ -1,4 +1,6 @@
-import { Context } from 'grammy';
+import fs from 'fs';
+import path from 'path';
+import { Context, InputFile } from 'grammy';
 import { logger } from './logger';
 import {
   buildMessageWithEntities,
@@ -206,14 +208,39 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Cache uploaded sticker file_id after the first upload for super-fast delivery
+let cachedStickerFileId: string | null = null;
+const LOCAL_STICKER_PATH = path.resolve(
+  process.cwd(),
+  'public/Hot Copperhead #6 (1).tgs'
+);
+
 /**
  * Sends the official Elite Force loading animated sticker (#6 Trophy 🏆).
- * Pack: https://t.me/addstickers/EliteForceWeb3
+ * Uses the local public/Hot Copperhead #6 (1).tgs file.
+ * Caches the uploaded file_id after the first send for maximum speed.
  * Returns the sent message ID, or null if sending failed.
  */
 export async function sendLoadingSticker(ctx: Context): Promise<number | null> {
   try {
-    const stickerMsg = await ctx.replyWithSticker(LOADING_STICKER_FILE_ID);
+    let stickerSource: string | InputFile;
+
+    if (cachedStickerFileId) {
+      stickerSource = cachedStickerFileId;
+    } else if (fs.existsSync(LOCAL_STICKER_PATH)) {
+      stickerSource = new InputFile(LOCAL_STICKER_PATH);
+    } else {
+      stickerSource = LOADING_STICKER_FILE_ID;
+    }
+
+    const stickerMsg = await ctx.replyWithSticker(stickerSource);
+
+    // Save the uploaded file_id returned by Telegram for future instant sends
+    if (stickerMsg.sticker?.file_id && !cachedStickerFileId) {
+      cachedStickerFileId = stickerMsg.sticker.file_id;
+      logger.info('Cached uploaded sticker file_id', { fileId: cachedStickerFileId });
+    }
+
     logger.info('Animated loading sticker sent to chat', {
       messageId: stickerMsg.message_id,
       chatId: ctx.chat?.id,
