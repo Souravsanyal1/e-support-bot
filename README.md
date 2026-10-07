@@ -151,6 +151,8 @@ npm test
 
 > **Direct Messaging:** Users can also chat naturally without commands. The AI automatically maintains recent conversational context.
 
+> **Group Chats:** The bot replies to every text message without a mention. Add it as a group admin, or disable Group Privacy through @BotFather so Telegram delivers regular group messages to it. Re-add the bot after changing its privacy setting.
+
 > **Channel Posts:** Add the bot as a channel administrator with permission to post messages. It replies to `/ask <question>` posts and posts that mention `@Elite_Force_Support_Bot`; ordinary announcements are ignored. For member comments, add the bot to the channel's linked discussion group and mention it in questions.
 
 ### Administrator Commands (Protected)

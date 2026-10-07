@@ -209,8 +209,8 @@ async function answerChannelPost(ctx: Context, chatId: number, query: string): P
 }
 
 /**
- * Determines whether the bot should respond to a message in a group or supergroup.
- * Prevents spamming unrelated group discussions.
+ * Legacy selective trigger predicate retained for compatibility. The normal
+ * text handler no longer uses this gate and responds to all group text messages.
  */
 export function shouldRespondInGroup(ctx: Context, text: string): boolean {
   const chatType = ctx.chat?.type;
@@ -249,7 +249,7 @@ export function shouldRespondInGroup(ctx: Context, text: string): boolean {
 
 /**
  * Handles standard incoming text messages (natural conversation).
- * Works seamlessly in private DMs and selectively in community groups.
+ * Works in private DMs and responds to every text message in community groups.
  */
 export async function handleTextMessage(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -259,13 +259,6 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 
   // Ignore commands that might have bypassed command routing
   if (text.startsWith('/')) {
-    return;
-  }
-
-  const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
-
-  // In groups, ignore unrelated banter between members
-  if (isGroup && !shouldRespondInGroup(ctx, text)) {
     return;
   }
 
