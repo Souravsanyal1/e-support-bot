@@ -11,6 +11,7 @@ import {
   handleAboutCommand,
   handleAskCommand,
   handleTextMessage,
+  handleNewChatMembers,
 } from '../handlers/userHandler';
 import {
   handleAdminStatus,
@@ -66,6 +67,9 @@ export function createBot(): Bot {
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);
+
+  // 6. Community Group Member Updates (Welcome message when bot joins)
+  bot.on('message:new_chat_members', handleNewChatMembers);
 
   return bot;
 }

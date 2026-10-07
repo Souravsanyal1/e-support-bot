@@ -6,6 +6,7 @@ process.env.GEMINI_API_KEY =
 process.env.BOT_MODE = 'polling';
 
 import assert from 'assert';
+import { Context } from 'grammy';
 
 async function runTests() {
   console.log('--- Starting Elite Force Bot Test Suite ---');
@@ -17,6 +18,7 @@ async function runTests() {
   const { sanitizeLogString, env } = await import('../src/config/env.config');
   const { conversationManager } = await import('../src/ai/conversation');
   const { rateLimiter } = await import('../src/middleware/rateLimiter');
+  const { shouldRespondInGroup } = await import('../src/handlers/userHandler');
 
   // Test 1: Sanitizer
   console.log('Testing Sanitizer...');
@@ -35,14 +37,17 @@ async function runTests() {
   assert(chunks.length >= 2, 'Should chunk message exceeding max limit');
   console.log('✓ Message splitter passed');
 
-  // Test 3: System Prompt Generation
-  console.log('Testing System Prompt Generation...');
+  // Test 3: System Prompt Generation & Privacy Guardrails
+  console.log('Testing System Prompt Generation & Privacy Guardrails...');
   const prompt = buildSystemPrompt();
   assert(prompt.includes('Elite Force AI'), 'Prompt must include bot name');
   assert(prompt.includes('Bengali'), 'Prompt must include Bengali support');
   assert(prompt.includes('Banglish'), 'Prompt must include Banglish support');
   assert(prompt.includes('NEVER FABRICATE'), 'Prompt must include strict safety boundaries');
-  console.log('✓ System prompt generation passed');
+  assert(prompt.includes('STRICT PRIVACY & INFRASTRUCTURE CONFIDENTIALITY'), 'Prompt must enforce server privacy');
+  assert(prompt.includes('NEVER reveal server information'), 'Prompt must ban server disclosures');
+  assert(prompt.includes('NEVER reveal personal information about developers'), 'Prompt must ban developer disclosures');
+  console.log('✓ System prompt & privacy guardrails passed');
 
   // Test 4: Secret Redaction in Logs
   console.log('Testing Secret Redaction in Logs...');
@@ -71,6 +76,34 @@ async function runTests() {
   }
   assert.strictEqual(rateLimiter.isRateLimited(spammerId), true, 'Should block requests exceeding limit');
   console.log('✓ Anti-spam rate limiter passed');
+
+  // Test 7: Telegram Group Trigger Logic (Anti-Spam)
+  console.log('Testing Telegram Group Trigger Logic...');
+  const mockMe = { id: 777777, username: 'Elite_Force_Support_Bot' };
+
+  // Case A: Private chat -> Always respond
+  const privateCtx = { chat: { type: 'private' }, me: mockMe, message: {} } as unknown as Context;
+  assert.strictEqual(shouldRespondInGroup(privateCtx, 'random message'), true, 'Should always respond in private chat');
+
+  // Case B: Group chat with unrelated message -> Do not respond
+  const groupCtx = { chat: { type: 'group' }, me: mockMe, message: {} } as unknown as Context;
+  assert.strictEqual(shouldRespondInGroup(groupCtx, 'good morning guys'), false, 'Should ignore unrelated group banter');
+
+  // Case C: Group chat tagging bot -> Should respond
+  assert.strictEqual(shouldRespondInGroup(groupCtx, '@Elite_Force_Support_Bot how are you?'), true, 'Should respond when tagged');
+
+  // Case D: Group chat mentioning Elite Force -> Should respond
+  assert.strictEqual(shouldRespondInGroup(groupCtx, 'What is Elite Force?'), true, 'Should respond when Elite Force is mentioned');
+  assert.strictEqual(shouldRespondInGroup(groupCtx, 'eliteforce ki?'), true, 'Should respond when eliteforce is mentioned');
+
+  // Case E: Direct reply to bot message -> Should respond
+  const replyCtx = {
+    chat: { type: 'supergroup' },
+    me: mockMe,
+    message: { reply_to_message: { from: { id: 777777 } } },
+  } as unknown as Context;
+  assert.strictEqual(shouldRespondInGroup(replyCtx, 'Yes please tell me more'), true, 'Should respond to direct replies to bot');
+  console.log('✓ Telegram group trigger logic passed');
 
   // Cleanup timers
   rateLimiter.destroy();

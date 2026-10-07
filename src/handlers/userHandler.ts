@@ -121,7 +121,47 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
 }
 
 /**
+ * Determines whether the bot should respond to a message in a group or supergroup.
+ * Prevents spamming unrelated group discussions.
+ */
+export function shouldRespondInGroup(ctx: Context, text: string): boolean {
+  const chatType = ctx.chat?.type;
+  // In private DMs, always respond
+  if (chatType === 'private') {
+    return true;
+  }
+
+  // In groups or supergroups:
+  const botUsername = ctx.me?.username ? ctx.me.username.toLowerCase() : 'elite_force_support_bot';
+  const lowerText = text.toLowerCase();
+
+  // 1. Tagged with bot username (e.g. @Elite_Force_Support_Bot)
+  if (lowerText.includes(`@${botUsername}`) || lowerText.includes('@elite_force_support_bot')) {
+    return true;
+  }
+
+  // 2. Direct reply to one of the bot's messages
+  if (ctx.message?.reply_to_message?.from?.id && ctx.me?.id) {
+    if (ctx.message.reply_to_message.from.id === ctx.me.id) {
+      return true;
+    }
+  }
+
+  // 3. Questions / messages mentioning "elite force" or "eliteforce" or "elite-force"
+  if (
+    lowerText.includes('elite force') ||
+    lowerText.includes('eliteforce') ||
+    lowerText.includes('elite-force')
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Handles standard incoming text messages (natural conversation).
+ * Works seamlessly in private DMs and selectively in community groups.
  */
 export async function handleTextMessage(ctx: Context): Promise<void> {
   const userId = ctx.from?.id;
@@ -134,23 +174,72 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+
+  // In groups, ignore unrelated banter between members
+  if (isGroup && !shouldRespondInGroup(ctx, text)) {
+    return;
+  }
+
+  // Clean prompt by removing bot mention tags
+  const botUsername = ctx.me?.username || 'Elite_Force_Support_Bot';
+  const cleanedText = text
+    .replace(new RegExp(`@${botUsername}`, 'gi'), '')
+    .replace(/@elite_force_support_bot/gi, '')
+    .trim();
+
+  const queryToProcess = cleanedText || text;
+
   // Fast path for simple greetings to provide instant natural response
-  const lower = text.toLowerCase().replace(/[^\w\s]/g, '').trim();
+  const lower = queryToProcess.toLowerCase().replace(/[^\w\s]/g, '').trim();
   if (lower === 'hello' || lower === 'hi' || lower === 'hey') {
-    await safeReply(ctx, "Hey! 👋 I'm Elite Force AI. How can I help you today?");
+    await safeReply(ctx, "Hey! 👋 I'm Elite Force AI. How can I help you today?", {
+      replyToMessage: isGroup,
+    });
     return;
   }
 
   await sendTypingAction(ctx);
 
   try {
-    const response = await generateSupportResponse(userId, text);
-    await safeReply(ctx, response);
+    const response = await generateSupportResponse(userId, queryToProcess);
+    await safeReply(ctx, response, { replyToMessage: isGroup });
   } catch (error) {
     logger.error('Error handling direct text message', error, { userId });
     await safeReply(
       ctx,
-      "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly."
+      "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
+      { replyToMessage: isGroup }
     );
+  }
+}
+
+/**
+ * Welcomes the community when the bot is added to a group or supergroup.
+ */
+export async function handleNewChatMembers(ctx: Context): Promise<void> {
+  const newMembers = ctx.message?.new_chat_members || [];
+  const botId = ctx.me?.id;
+
+  // Check if our bot was added
+  const isBotAdded = newMembers.some((member) => member.id === botId);
+
+  if (isBotAdded) {
+    const username = ctx.me?.username || 'Elite_Force_Support_Bot';
+    const welcome = [
+      `👋 *Hello everyone! I am ${BOT_CONFIG.name}.*`,
+      '',
+      `I am the official AI community support assistant for the *Elite Force* ecosystem.`,
+      '',
+      `*How to interact with me in this group:*`,
+      `• Tag me: @${username} <your question>`,
+      `• Reply directly to any of my messages`,
+      `• Ask any question mentioning *Elite Force*`,
+      `• Use \`/ask <question>\` or \`/help\``,
+      '',
+      `🛡️ *Safety Reminder:* Official admins will *never* DM you first or ask for private keys/seed phrases.`,
+    ].join('\n');
+
+    await safeReply(ctx, welcome);
   }
 }
