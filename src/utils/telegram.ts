@@ -1,21 +1,28 @@
 import { Context } from 'grammy';
 import { logger } from './logger';
 import {
+  buildMessageWithEntities,
   formatToTelegramHtml,
   stripCustomEmojiTags,
   stripAllHtmlTags,
+  TelegramEntity,
 } from './telegramFormatter';
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
 /**
- * Splits text into chunks that fit within Telegram's message character limit.
- * Breaks preferentially on double-newlines, single-newlines, or spaces.
+ * Detects whether text contains Markdown formatting syntax.
+ */
+function hasMarkdown(text: string): boolean {
+  return /\*\*|(?<![*])\*(?![*])|_[^_]+_|`[^`]+`|\[[^\]]+\]\(https?:/.test(text);
+}
+
+/**
+ * Splits a plain text string into chunks ≤ maxLength characters.
+ * Also adjusts entity offsets per chunk for multi-part messages.
  */
 export function splitMessage(text: string, maxLength: number = 4000): string[] {
-  if (text.length <= maxLength) {
-    return [text];
-  }
+  if (text.length <= maxLength) return [text];
 
   const chunks: string[] = [];
   let remaining = text;
@@ -26,20 +33,13 @@ export function splitMessage(text: string, maxLength: number = 4000): string[] {
       break;
     }
 
-    // Try finding paragraph break
     let splitIndex = remaining.lastIndexOf('\n\n', maxLength);
-
-    // If not found, try newline
     if (splitIndex === -1 || splitIndex < maxLength / 2) {
       splitIndex = remaining.lastIndexOf('\n', maxLength);
     }
-
-    // If still not found, try space
     if (splitIndex === -1 || splitIndex < maxLength / 2) {
       splitIndex = remaining.lastIndexOf(' ', maxLength);
     }
-
-    // Hard break if no good whitespace break point
     if (splitIndex === -1 || splitIndex === 0) {
       splitIndex = maxLength;
     }
@@ -52,82 +52,144 @@ export function splitMessage(text: string, maxLength: number = 4000): string[] {
 }
 
 /**
- * Safely sends a response message to Telegram with 3-tier fallback:
- * 1. Rich HTML with animated Telegram Custom Emojis (<tg-emoji>) + Bold + Italic.
- * 2. Standard HTML (with fallback emojis) if custom emoji ID is rejected.
- * 3. Plain text if HTML parsing encounters any unclosed tag.
+ * Splits text and adjusts entity offsets for each chunk.
+ */
+function splitWithEntities(
+  text: string,
+  entities: TelegramEntity[],
+  maxLength = 4000
+): Array<{ text: string; entities: TelegramEntity[] }> {
+  if (text.length <= maxLength) return [{ text, entities }];
+
+  const results: Array<{ text: string; entities: TelegramEntity[] }> = [];
+  let pos = 0;
+
+  while (pos < text.length) {
+    const end = Math.min(pos + maxLength, text.length);
+    let splitAt = end;
+    if (splitAt < text.length) {
+      const sub = text.slice(pos, end);
+      const nlnl = sub.lastIndexOf('\n\n');
+      const nl = sub.lastIndexOf('\n');
+      const sp = sub.lastIndexOf(' ');
+      if (nlnl > maxLength / 2) splitAt = pos + nlnl;
+      else if (nl > maxLength / 2) splitAt = pos + nl;
+      else if (sp > maxLength / 2) splitAt = pos + sp;
+    }
+
+    const chunkText = text.slice(pos, splitAt).trim();
+    const chunkEntities = entities
+      .filter((e) => e.offset >= pos && e.offset + e.length <= splitAt)
+      .map((e) => ({ ...e, offset: e.offset - pos }));
+
+    results.push({ text: chunkText, entities: chunkEntities });
+    pos = splitAt;
+  }
+
+  return results;
+}
+
+/**
+ * Safely sends a Telegram message with animated custom emojis and rich formatting.
+ *
+ * Delivery order (four tiers):
+ *   1. Entity-based (plain text + MessageEntity[], type: "custom_emoji") — for plain text messages.
+ *   2. HTML with <tg-emoji> + <b>/<i>/<code>/<a> — for Markdown-formatted messages.
+ *   3. HTML with standard emojis (strips <tg-emoji> tags) — if animated emojis are rejected.
+ *   4. Plain text — rock-solid last resort.
  */
 export async function safeReply(
   ctx: Context,
   text: string,
   options?: { replyToMessage?: boolean }
 ): Promise<void> {
+  const replyParamsBase =
+    options?.replyToMessage && ctx.message?.message_id
+      ? { message_id: ctx.message.message_id }
+      : undefined;
+
+  const isMarkdown = hasMarkdown(text);
+
+  if (!isMarkdown) {
+    // ── Tier 1: Entity mode ──────────────────────────────────────────────────
+    const { text: rawText, entities } = buildMessageWithEntities(text);
+    const chunks = splitWithEntities(rawText, entities);
+
+    let allSent = true;
+    for (let i = 0; i < chunks.length; i++) {
+      const { text: chunkText, entities: chunkEntities } = chunks[i];
+      const replyParameters = i === 0 ? replyParamsBase : undefined;
+
+      try {
+        await ctx.reply(chunkText, {
+          entities: chunkEntities.length > 0
+            ? (chunkEntities as Parameters<typeof ctx.reply>[1] extends { entities?: infer E } ? E : never)
+            : undefined,
+          reply_parameters: replyParameters,
+        } as Parameters<typeof ctx.reply>[1]);
+      } catch {
+        allSent = false;
+        // Fall through to HTML attempt for this chunk
+        try {
+          await ctx.reply(chunkText, { reply_parameters: replyParameters });
+        } catch (err) {
+          logger.error('Entity-mode plain text fallback failed', err);
+        }
+      }
+    }
+    if (allSent) return;
+  }
+
+  // ── Tier 2: HTML mode with <tg-emoji> ────────────────────────────────────
   const formattedHtml = formatToTelegramHtml(text);
-  const chunks = splitMessage(formattedHtml);
+  const htmlChunks = splitMessage(formattedHtml);
 
-  for (let i = 0; i < chunks.length; i++) {
-    const chunk = chunks[i];
-    const replyParameters =
-      options?.replyToMessage && i === 0 && ctx.message?.message_id
-        ? { message_id: ctx.message.message_id }
-        : undefined;
+  for (let i = 0; i < htmlChunks.length; i++) {
+    const chunk = htmlChunks[i];
+    const replyParameters = i === 0 ? replyParamsBase : undefined;
 
-    // Level 1: Attempt rich HTML with animated <tg-emoji>
     try {
       await ctx.reply(chunk, {
         parse_mode: 'HTML',
         reply_parameters: replyParameters,
       });
       continue;
-    } catch (emojiHtmlError) {
-      logger.debug('HTML with animated custom emoji rejected, attempting standard HTML', {
-        error:
-          emojiHtmlError instanceof Error
-            ? emojiHtmlError.message
-            : String(emojiHtmlError),
-      });
+    } catch {
+      logger.debug('HTML with <tg-emoji> rejected, trying standard HTML');
     }
 
-    // Level 2: Standard HTML without <tg-emoji> tags (retains <b>, <i>, and clean emojis)
-    const standardHtmlChunk = stripCustomEmojiTags(chunk);
+    // ── Tier 3: HTML without <tg-emoji> ──────────────────────────────────
     try {
-      await ctx.reply(standardHtmlChunk, {
+      await ctx.reply(stripCustomEmojiTags(chunk), {
         parse_mode: 'HTML',
         reply_parameters: replyParameters,
       });
       continue;
-    } catch (standardHtmlError) {
-      logger.debug('Standard HTML rejected, falling back to plain text', {
-        error:
-          standardHtmlError instanceof Error
-            ? standardHtmlError.message
-            : String(standardHtmlError),
-      });
+    } catch {
+      logger.debug('Standard HTML rejected, falling back to plain text');
     }
 
-    // Level 3: Rock-solid plain text fallback
+    // ── Tier 4: Plain text ────────────────────────────────────────────────
     try {
-      const plainChunk = stripAllHtmlTags(chunk);
-      await ctx.reply(plainChunk, {
+      await ctx.reply(stripAllHtmlTags(chunk), {
         reply_parameters: replyParameters,
       });
-    } catch (fallbackError) {
-      logger.error('Failed to send message chunk in plain text fallback', fallbackError);
-      throw fallbackError;
+    } catch (err) {
+      logger.error('All message delivery tiers failed', err);
+      throw err;
     }
   }
 }
 
 /**
- * Sends a continuous "typing" action in the chat while an async task is running.
+ * Sends a typing indicator while the AI generates a response.
  */
 export async function sendTypingAction(ctx: Context): Promise<void> {
   try {
     await ctx.replyWithChatAction('typing');
-  } catch (error) {
-    // Non-critical action, safe to silently log at debug level
-    logger.debug('Failed to send typing chat action', {
-      error: error instanceof Error ? error.message : String(error),
+  } catch (err) {
+    logger.debug('Failed to send typing action', {
+      error: err instanceof Error ? err.message : String(err),
     });
   }
 }
