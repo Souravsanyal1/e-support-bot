@@ -214,7 +214,7 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   const lower = queryToProcess.toLowerCase().replace(/[^\w\s]/g, '').trim();
   if (lower === 'hello' || lower === 'hi' || lower === 'hey') {
     await safeReply(ctx, "Hey! 👋 I'm Elite Force AI. How can I help you today?", {
-      replyToMessage: isGroup,
+      replyToMessage: true,
     });
     return;
   }
@@ -234,14 +234,14 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     }
 
     await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, response, { replyToMessage: isGroup });
+    await safeReply(ctx, response, { replyToMessage: true });
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling direct text message', error, { userId });
     await safeReply(
       ctx,
       "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
-      { replyToMessage: isGroup }
+      { replyToMessage: true }
     );
   }
 }
