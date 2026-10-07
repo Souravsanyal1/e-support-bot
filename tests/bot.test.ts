@@ -116,6 +116,13 @@ async function runTests() {
   assert(htmlOutput.includes('<tg-emoji emoji-id="6201987489012394141">🧡</tg-emoji>'), 'Must convert 🧡 to animated custom emoji tag');
   assert(htmlOutput.includes('<tg-emoji emoji-id="6201982992181634064">🤩</tg-emoji>'), 'Must convert 🤩 to animated custom emoji tag');
 
+  const macSample = 'Token 🪙 and Bot 🤖 with ⚡️ speed and 🔒 security!';
+  const macOutput = formatToTelegramHtml(macSample);
+  assert(macOutput.includes('<tg-emoji emoji-id="5258368777350816286">🪙</tg-emoji>'), 'Must convert 🪙 to animated token icon');
+  assert(macOutput.includes('<tg-emoji emoji-id="5258093637450866522">🤖</tg-emoji>'), 'Must convert 🤖 to animated bot icon');
+  assert(macOutput.includes('<tg-emoji emoji-id="5258152182150077732">⚡️</tg-emoji>'), 'Must convert ⚡️ to animated bolt icon');
+  assert(macOutput.includes('<tg-emoji emoji-id="5258476306152038031">🔒</tg-emoji>'), 'Must convert 🔒 to animated lock icon');
+
   const strippedEmoji = stripCustomEmojiTags(htmlOutput);
   assert(!strippedEmoji.includes('<tg-emoji'), 'Must strip <tg-emoji> tags on fallback');
   assert(strippedEmoji.includes('🧡'), 'Must preserve fallback emoji character');

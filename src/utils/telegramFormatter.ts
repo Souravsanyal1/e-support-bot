@@ -2,10 +2,13 @@
  * Telegram Rich Text & Animated Custom Emoji Formatter
  *
  * Supports bold, italic, code, links, and animated Telegram custom emojis
- * from the official Elite Force emoji pack: https://t.me/addemoji/EliteForceOFC
+ * from official packs:
+ * 1. Elite Force Official: https://t.me/addemoji/EliteForceOFC
+ * 2. TG iOS & macOS Icons: https://t.me/addemoji/tgmacicons
  */
 
-export const ELITE_FORCE_CUSTOM_EMOJIS: Record<string, string> = {
+export const ALL_TELEGRAM_CUSTOM_EMOJIS: Record<string, string> = {
+  // === Pack 1: Elite Force Official (https://t.me/addemoji/EliteForceOFC) ===
   '🧡': '6201987489012394141',
   '🤩': '6201982992181634064',
   '🤴': '6201844956227707404',
@@ -16,7 +19,73 @@ export const ELITE_FORCE_CUSTOM_EMOJIS: Record<string, string> = {
   '🎄': '6201737526210732162',
   '😶🌫️': '6201653654089377041',
   '😶‍🌫️': '6201653654089377041',
+
+  // === Pack 2: TG iOS & macOS Icons (https://t.me/addemoji/tgmacicons) ===
+  '✈️': '5258073068852485953',
+  '✈': '5258073068852485953',
+  '🔢': '5226513232549664618',
+  '🖼': '5258050709252743821',
+  '👤': '5258362837411045098',
+  '⭐️': '5258185631355378853',
+  '⭐': '5258185631355378853',
+  '📂': '5258514780469075716',
+  '📁': '5257965810634202885',
+  '❌': '5258226313285607065',
+  '⚽️': '5258169263235013408',
+  '🐻': '5258145898612924124',
+  '📝': '5257965174979042426',
+  '🪙': '5258368777350816286',
+  '⚡️': '5258152182150077732',
+  '⚡': '5258152182150077732',
+  '📖': '5258328383183396223',
+  '🤖': '5258093637450866522',
+  '💼': '5258260149037965799',
+  '🗓': '5258105663359294787',
+  '🤙': '5258337316715373336',
+  '📸': '5258205968025525531',
+  '📣': '5260268501515377807',
+  '✅': '5260726538302660868',
+  '⛓': '5260730055880876557',
+  '🔗': '5260730055880876557',
+  '📄': '5258477770735885832',
+  '👥': '5258513401784573443',
+  '🗑': '5258130763148172425',
+  '✍️': '5258331647358540449',
+  '✍': '5258331647358540449',
+  '🎮': '5258508428212445001',
+  '🎓': '5258334872878980409',
+  '❤️': '5258179403652801593',
+  '💡': '5258216851472654189',
+  '📍': '5258509201306557640',
+  '🔒': '5258476306152038031',
+  '🛡️': '5258476306152038031',
+  '🛡': '5258476306152038031',
+  '💬': '5258215846450305872',
+  '📌': '5258461531464539536',
+  '🔄': '5258420634785947640',
+  '💎': '5280962371207077415',
+  '💻': '5258423306255604960',
+  'ℹ️': '5258503720928288433',
+  'ℹ': '5258503720928288433',
+  '📈': '5258391025281408576',
+  '💰': '5258204546391351475',
+  '⚙️': '5258096772776991776',
+  '⚙': '5258096772776991776',
+  '🔎': '5429571366384842791',
+  '🔍': '5429571366384842791',
+  '🏷': '5296348778012361146',
 };
+
+// Pre-sorted list of emoji keys by length descending to match composite emojis first
+const SORTED_EMOJI_KEYS = Object.keys(ALL_TELEGRAM_CUSTOM_EMOJIS).sort(
+  (a, b) => b.length - a.length
+);
+
+// Pre-compile regex for single-pass replacement, avoiding nested tag wrapping
+const ESCAPED_EMOJI_PATTERN = SORTED_EMOJI_KEYS.map((k) =>
+  k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+).join('|');
+const CUSTOM_EMOJI_REGEX = new RegExp(ESCAPED_EMOJI_PATTERN, 'g');
 
 /**
  * Escapes characters that have special meaning in Telegram HTML.
@@ -45,18 +114,19 @@ export function formatToTelegramHtml(markdownText: string): string {
   html = html.replace(/(^|[^\*])\*([^\*\s][^\*]*?[^\*\s]|\S)\*(?!\*)/g, '$1<i>$2</i>');
   html = html.replace(/(^|[^_])_([^_]+?)_(?!_)/g, '$1<i>$2</i>');
 
-  // 5. Monospace code: `code`
+  // 4. Monospace code: `code`
   html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
 
-  // 6. Links: [label](url)
+  // 5. Links: [label](url)
   html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\s\)]+)\)/g, '<a href="$2">$1</a>');
 
-  // 7. Inject Telegram custom animated emojis from EliteForceOFC pack
-  for (const [emojiChar, customEmojiId] of Object.entries(ELITE_FORCE_CUSTOM_EMOJIS)) {
-    if (html.includes(emojiChar)) {
-      html = html.split(emojiChar).join(`<tg-emoji emoji-id="${customEmojiId}">${emojiChar}</tg-emoji>`);
-    }
-  }
+  // 6. Inject Telegram animated custom emojis in a single pass
+  html = html.replace(CUSTOM_EMOJI_REGEX, (match) => {
+    const customEmojiId = ALL_TELEGRAM_CUSTOM_EMOJIS[match];
+    return customEmojiId
+      ? `<tg-emoji emoji-id="${customEmojiId}">${match}</tg-emoji>`
+      : match;
+  });
 
   return html;
 }
