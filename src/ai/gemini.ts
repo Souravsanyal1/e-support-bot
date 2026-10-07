@@ -164,8 +164,23 @@ async function callGemini(
     },
   ];
 
+  const isThinkingModel =
+    env.geminiModel.includes('2.5') || env.geminiModel.includes('thinking');
+
+  const genConfig: Record<string, unknown> = {
+    systemInstruction,
+    temperature: 0.5,
+    maxOutputTokens: 350,
+  };
+
+  if (isThinkingModel) {
+    genConfig.thinkingConfig = {
+      thinkingBudget: 0,
+    };
+  }
+
   const timeoutPromise = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error('Gemini API timed out after 15 seconds')), 15000);
+    const t = setTimeout(() => reject(new Error('Gemini API timed out after 8 seconds')), 8000);
     if (t.unref) t.unref();
   });
 
@@ -173,11 +188,7 @@ async function callGemini(
     ai.models.generateContent({
       model: env.geminiModel,
       contents,
-      config: {
-        systemInstruction,
-        temperature: 0.5,
-        maxOutputTokens: 350,
-      },
+      config: genConfig,
     }),
     timeoutPromise,
   ]);
