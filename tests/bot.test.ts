@@ -105,7 +105,25 @@ async function runTests() {
     message: { reply_to_message: { from: { id: 777777 } } },
   } as unknown as Context;
   assert.strictEqual(shouldRespondInGroup(replyCtx, 'Yes please tell me more'), true, 'Should respond to direct replies to bot');
-  console.log('✓ Telegram group trigger logic passed');
+  // Test 8: Rich Text Formatting & Telegram Animated Custom Emojis
+  console.log('Testing Telegram Rich Text & Animated Emojis...');
+  const { formatToTelegramHtml, stripCustomEmojiTags, stripAllHtmlTags } = await import('../src/utils/telegramFormatter');
+
+  const sampleText = 'Welcome to **Elite Force**! *Building Beyond Limits* 🧡 🤩';
+  const htmlOutput = formatToTelegramHtml(sampleText);
+  assert(htmlOutput.includes('<b>Elite Force</b>'), 'Must convert bold');
+  assert(htmlOutput.includes('<i>Building Beyond Limits</i>'), 'Must convert italic');
+  assert(htmlOutput.includes('<tg-emoji emoji-id="6201987489012394141">🧡</tg-emoji>'), 'Must convert 🧡 to animated custom emoji tag');
+  assert(htmlOutput.includes('<tg-emoji emoji-id="6201982992181634064">🤩</tg-emoji>'), 'Must convert 🤩 to animated custom emoji tag');
+
+  const strippedEmoji = stripCustomEmojiTags(htmlOutput);
+  assert(!strippedEmoji.includes('<tg-emoji'), 'Must strip <tg-emoji> tags on fallback');
+  assert(strippedEmoji.includes('🧡'), 'Must preserve fallback emoji character');
+
+  const plainText = stripAllHtmlTags(htmlOutput);
+  assert(!plainText.includes('<b>') && !plainText.includes('<i>'), 'Must strip all HTML on level-3 fallback');
+  assert(plainText.includes('Elite Force'), 'Must preserve core text');
+  console.log('✓ Rich text & animated custom emoji formatter passed');
 
   // Cleanup timers
   rateLimiter.destroy();

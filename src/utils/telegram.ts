@@ -1,5 +1,10 @@
 import { Context } from 'grammy';
 import { logger } from './logger';
+import {
+  formatToTelegramHtml,
+  stripCustomEmojiTags,
+  stripAllHtmlTags,
+} from './telegramFormatter';
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
@@ -47,15 +52,18 @@ export function splitMessage(text: string, maxLength: number = 4000): string[] {
 }
 
 /**
- * Safely sends a response message to Telegram.
- * Attempts Markdown format first; if Telegram rejects formatting, falls back to plain text.
+ * Safely sends a response message to Telegram with 3-tier fallback:
+ * 1. Rich HTML with animated Telegram Custom Emojis (<tg-emoji>) + Bold + Italic.
+ * 2. Standard HTML (with fallback emojis) if custom emoji ID is rejected.
+ * 3. Plain text if HTML parsing encounters any unclosed tag.
  */
 export async function safeReply(
   ctx: Context,
   text: string,
   options?: { replyToMessage?: boolean }
 ): Promise<void> {
-  const chunks = splitMessage(text);
+  const formattedHtml = formatToTelegramHtml(text);
+  const chunks = splitMessage(formattedHtml);
 
   for (let i = 0; i < chunks.length; i++) {
     const chunk = chunks[i];
@@ -64,26 +72,48 @@ export async function safeReply(
         ? { message_id: ctx.message.message_id }
         : undefined;
 
+    // Level 1: Attempt rich HTML with animated <tg-emoji>
     try {
-      // First attempt with HTML or Markdown formatting
       await ctx.reply(chunk, {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         reply_parameters: replyParameters,
       });
-    } catch (markdownError) {
-      // If Markdown parsing fails due to unescaped special characters, fall back to plain text
-      logger.debug('Markdown formatting rejected by Telegram API, falling back to plain text', {
-        error: markdownError instanceof Error ? markdownError.message : String(markdownError),
+      continue;
+    } catch (emojiHtmlError) {
+      logger.debug('HTML with animated custom emoji rejected, attempting standard HTML', {
+        error:
+          emojiHtmlError instanceof Error
+            ? emojiHtmlError.message
+            : String(emojiHtmlError),
       });
+    }
 
-      try {
-        await ctx.reply(chunk, {
-          reply_parameters: replyParameters,
-        });
-      } catch (fallbackError) {
-        logger.error('Failed to send message chunk even in plain text fallback', fallbackError);
-        throw fallbackError;
-      }
+    // Level 2: Standard HTML without <tg-emoji> tags (retains <b>, <i>, and clean emojis)
+    const standardHtmlChunk = stripCustomEmojiTags(chunk);
+    try {
+      await ctx.reply(standardHtmlChunk, {
+        parse_mode: 'HTML',
+        reply_parameters: replyParameters,
+      });
+      continue;
+    } catch (standardHtmlError) {
+      logger.debug('Standard HTML rejected, falling back to plain text', {
+        error:
+          standardHtmlError instanceof Error
+            ? standardHtmlError.message
+            : String(standardHtmlError),
+      });
+    }
+
+    // Level 3: Rock-solid plain text fallback
+    try {
+      const plainChunk = stripAllHtmlTags(chunk);
+      await ctx.reply(plainChunk, {
+        reply_parameters: replyParameters,
+      });
+    } catch (fallbackError) {
+      logger.error('Failed to send message chunk in plain text fallback', fallbackError);
+      throw fallbackError;
     }
   }
 }
