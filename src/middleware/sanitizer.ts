@@ -18,10 +18,11 @@ export async function sanitizeMessageMiddleware(
   ctx: Context,
   next: NextFunction
 ): Promise<void> {
-  const rawText = ctx.message?.text;
+  const message = ctx.message ?? ctx.channelPost;
+  const rawText = message?.text;
 
   // If update is not a text message, pass through
-  if (!ctx.message || rawText === undefined) {
+  if (!message || rawText === undefined) {
     await next();
     return;
   }
@@ -40,7 +41,7 @@ export async function sanitizeMessageMiddleware(
   }
 
   // Sanitize message text in place
-  ctx.message.text = sanitizeInputString(rawText);
+  message.text = sanitizeInputString(rawText);
 
   await next();
 }

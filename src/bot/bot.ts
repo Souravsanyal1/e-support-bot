@@ -11,6 +11,7 @@ import {
   handleAboutCommand,
   handleAskCommand,
   handleTextMessage,
+  handleChannelPost,
   handleNewChatMembers,
 } from '../handlers/userHandler';
 import {
@@ -67,6 +68,9 @@ export function createBot(): Bot {
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);
+
+  // Channel posts use a separate Telegram update type from regular messages.
+  bot.on('channel_post:text', handleChannelPost);
 
   // 6. Community Group Member Updates (Welcome message when bot joins)
   bot.on('message:new_chat_members', handleNewChatMembers);

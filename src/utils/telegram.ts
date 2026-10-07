@@ -106,9 +106,10 @@ export async function safeReply(
   text: string,
   options?: { replyToMessage?: boolean }
 ): Promise<void> {
+  const sourceMessageId = ctx.message?.message_id ?? ctx.channelPost?.message_id;
   const replyParamsBase =
-    options?.replyToMessage && ctx.message?.message_id
-      ? { message_id: ctx.message.message_id }
+    options?.replyToMessage && sourceMessageId
+      ? { message_id: sourceMessageId }
       : undefined;
 
   const isMarkdown = hasMarkdown(text);
@@ -323,4 +324,3 @@ export async function deleteLoadingSticker(
     });
   }
 }
-

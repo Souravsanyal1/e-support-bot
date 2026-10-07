@@ -141,6 +141,74 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
 }
 
 /**
+ * Handles text channel posts. Telegram delivers these separately from messages,
+ * and channel posts have no reliable user identity, so the channel ID is used
+ * for conversation history when the original author is unavailable.
+ */
+export async function handleChannelPost(ctx: Context): Promise<void> {
+  const text = ctx.channelPost?.text?.trim();
+  const chatId = ctx.chat?.id;
+  if (!text || !chatId) return;
+
+  const botUsername = ctx.me?.username || BOT_CONFIG.username.replace(/^@/, '');
+  const commandMatch = text.match(/^\/([a-z0-9_]+)(?:@(\w+))?(?:\s|$)/i);
+
+  if (commandMatch) {
+    const [, command, targetUsername] = commandMatch;
+    if (targetUsername && targetUsername.toLowerCase() !== botUsername.toLowerCase()) return;
+
+    switch (command.toLowerCase()) {
+      case 'start':
+        await handleStartCommand(ctx);
+        return;
+      case 'help':
+        await handleHelpCommand(ctx);
+        return;
+      case 'about':
+        await handleAboutCommand(ctx);
+        return;
+      case 'ask': {
+        const query = text.replace(/^\/ask(?:@\w+)?/i, '').trim();
+        if (!query) {
+          await safeReply(
+            ctx,
+            'Please add a question after /ask, for example: /ask What is Elite Force?',
+            { replyToMessage: true }
+          );
+          return;
+        }
+        await answerChannelPost(ctx, ctx.from?.id ?? chatId, query);
+        return;
+      }
+      default:
+        // Ignore admin and unknown commands in channel posts.
+        return;
+    }
+  }
+
+  // Require an explicit mention in channels so ordinary announcements are not
+  // answered and the bot does not react to its own channel replies.
+  if (!text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) return;
+
+  const query = text.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
+  await answerChannelPost(ctx, ctx.from?.id ?? chatId, query || text);
+}
+
+async function answerChannelPost(ctx: Context, chatId: number, query: string): Promise<void> {
+  try {
+    const response = await generateSupportResponse(chatId, query);
+    await safeReply(ctx, response, { replyToMessage: true });
+  } catch (error) {
+    logger.error('Error handling channel post', error, { chatId });
+    await safeReply(
+      ctx,
+      "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
+      { replyToMessage: true }
+    );
+  }
+}
+
+/**
  * Determines whether the bot should respond to a message in a group or supergroup.
  * Prevents spamming unrelated group discussions.
  */
