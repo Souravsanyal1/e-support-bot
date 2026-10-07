@@ -50,7 +50,7 @@ function loadAndValidateConfig(): AppConfig {
       ? rawOpenRouterKey
       : undefined;
 
-  const openrouterModel = process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o';
+  const openrouterModel = process.env.OPENROUTER_MODEL?.trim() || 'openai/gpt-4o-mini';
 
   const rawGeminiKey = process.env.GEMINI_API_KEY?.trim();
   const geminiApiKey =

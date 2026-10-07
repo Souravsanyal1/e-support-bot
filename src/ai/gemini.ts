@@ -1,19 +1,93 @@
 import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
-import { withRetry } from '../utils/retry';
 import { buildSystemPrompt } from './systemPrompt';
 import { conversationManager } from './conversation';
+import { ELITE_FORCE_KNOWLEDGE } from '../config/knowledge.config';
 
 // Initialize the optional Google Gen AI client if key is present
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
 
 /**
- * Calls OpenRouter chat completion (e.g. openai/gpt-4o) with retry logic.
+ * Emergency static knowledge fallback when both AI APIs are unavailable or exhausted.
+ * Ensures the bot NEVER sends a generic connection error message.
+ */
+function getEmergencyKnowledgeResponse(userMessage: string): string {
+  const query = userMessage.toLowerCase().trim();
+
+  if (
+    query.includes('contract') ||
+    query.includes('address') ||
+    query.includes('ca') ||
+    query.includes('bsc') ||
+    query.includes('token')
+  ) {
+    return (
+      `Here is the official **${ELITE_FORCE_KNOWLEDGE.nativeToken.symbol}** token information:\n\n` +
+      `• **Token Name:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.name}\n` +
+      `• **Symbol:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.symbol}\n` +
+      `• **Standard:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.standard}\n` +
+      `• **Status:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.status}\n\n` +
+      `Contract address and launch details will be revealed exclusively on ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}. Beware of scams! 🧡`
+    );
+  }
+
+  if (
+    query.includes('founder') ||
+    query.includes('ceo') ||
+    query.includes('creator') ||
+    query.includes('dev') ||
+    query.includes('admin') ||
+    query.includes('team')
+  ) {
+    return (
+      `**Elite Force Leadership Team:**\n\n` +
+      `• **Founder & CEO:** Prince Sourav (@princesourav80)\n` +
+      `• **Co-Founder:** Krit (@kirit_1)\n\n` +
+      `For official announcements, follow: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}`
+    );
+  }
+
+  if (
+    query.includes('channel') ||
+    query.includes('link') ||
+    query.includes('group') ||
+    query.includes('website') ||
+    query.includes('social')
+  ) {
+    return (
+      `Official **Elite Force** Links:\n\n` +
+      `• 📢 **Channel:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}\n` +
+      `• 🐦 **X (Twitter):** ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}\n\n` +
+      `Stay connected with our official channels! 🚀`
+    );
+  }
+
+  if (
+    query.includes('hi') ||
+    query.includes('hello') ||
+    query.includes('hey') ||
+    query.includes('start')
+  ) {
+    return `Hey! 👋 I'm Elite Force AI. I'm here to assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, and community updates. How can I help you today?`;
+  }
+
+  return (
+    `**Elite Force** is a decentralized Web3 community and reward ecosystem built on the **BNB Smart Chain** centered around its native utility token **E-FORCE**.\n\n` +
+    `• **Official Tagline:** *Building Beyond Limits*\n` +
+    `• **Official Channel:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}\n` +
+    `• **Official X:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}\n\n` +
+    `Feel free to ask any questions about our token, vision, or community! 🧡🚀`
+  );
+}
+
+/**
+ * Calls OpenRouter chat completion with auto-fallback to gpt-4o-mini if credits or model limits hit.
  */
 async function callOpenRouter(
   userPrompt: string,
-  history: Array<{ role: 'user' | 'model'; text: string }>
+  history: Array<{ role: 'user' | 'model'; text: string }>,
+  modelOverride?: string
 ): Promise<string> {
   const systemPrompt = buildSystemPrompt();
   const messages = [
@@ -25,43 +99,40 @@ async function callOpenRouter(
     { role: 'user', content: userPrompt },
   ];
 
-  const response = await withRetry(
-    async () => {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${env.openrouterApiKey}`,
-          'HTTP-Referer': 'https://t.me/Elite_Force_Support_Bot',
-          'X-Title': 'Elite Force AI',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: env.openrouterModel,
-          messages,
-          temperature: 0.5,
-          max_tokens: 350,
-        }),
-      });
+  const modelToUse = modelOverride || env.openrouterModel || 'openai/gpt-4o-mini';
 
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(
-          `OpenRouter API error (${res.status}): ${JSON.stringify(errorData)}`
-        );
-      }
-
-      return (await res.json()) as {
-        choices?: Array<{ message?: { content?: string } }>;
-      };
+  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${env.openrouterApiKey}`,
+      'HTTP-Referer': 'https://t.me/Elite_Force_Support_Bot',
+      'X-Title': 'Elite Force AI',
+      'Content-Type': 'application/json',
     },
-    {
-      maxRetries: 2,
-      initialDelayMs: 1000,
-      operationName: 'OpenRouter ChatCompletion',
-    }
-  );
+    body: JSON.stringify({
+      model: modelToUse,
+      messages,
+      temperature: 0.5,
+      max_tokens: 300,
+    }),
+  });
 
-  const replyText = response.choices?.[0]?.message?.content?.trim();
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    // If the chosen model failed due to credit limits or not found, auto-try openai/gpt-4o-mini
+    if (modelToUse !== 'openai/gpt-4o-mini') {
+      logger.warn(`OpenRouter model ${modelToUse} returned ${res.status}, automatically falling back to openai/gpt-4o-mini`);
+      return callOpenRouter(userPrompt, history, 'openai/gpt-4o-mini');
+    }
+    throw new Error(
+      `OpenRouter API error (${res.status}): ${JSON.stringify(errorData)}`
+    );
+  }
+
+  const data = (await res.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const replyText = data.choices?.[0]?.message?.content?.trim();
   if (!replyText) {
     throw new Error('Empty response from OpenRouter API');
   }
@@ -70,7 +141,7 @@ async function callOpenRouter(
 }
 
 /**
- * Calls Google Gemini generateContent with retry logic.
+ * Calls Google Gemini generateContent.
  */
 async function callGemini(
   userPrompt: string,
@@ -92,24 +163,15 @@ async function callGemini(
     },
   ];
 
-  const response = await withRetry(
-    async () => {
-      return await ai.models.generateContent({
-        model: env.geminiModel,
-        contents,
-        config: {
-          systemInstruction,
-          temperature: 0.5,
-          maxOutputTokens: 350,
-        },
-      });
+  const response = await ai.models.generateContent({
+    model: env.geminiModel,
+    contents,
+    config: {
+      systemInstruction,
+      temperature: 0.5,
+      maxOutputTokens: 350,
     },
-    {
-      maxRetries: 2,
-      initialDelayMs: 1200,
-      operationName: 'Gemini GenerateContent',
-    }
-  );
+  });
 
   const replyText = response.text?.trim();
   if (!replyText) {
@@ -129,7 +191,7 @@ async function callGemini(
  * If the primary fails, the other provider is tried automatically as fallback.
  */
 function getPrimaryProvider(): 'gemini' | 'openrouter' {
-  const hour = new Date().getHours(); // local server hour (0–23)
+  const hour = new Date().getHours();
   return hour < 12 ? 'gemini' : 'openrouter';
 }
 
@@ -138,9 +200,10 @@ function getPrimaryProvider(): 'gemini' | 'openrouter' {
  *
  * Primary schedule:
  *   00:00 – 11:59  →  Google Gemini
- *   12:00 – 23:59  →  OpenRouter (GPT-4o)
+ *   12:00 – 23:59  →  OpenRouter (GPT-4o-mini)
  *
- * If the primary provider fails, the secondary is tried automatically.
+ * If primary provider fails, secondary provider is tried automatically.
+ * If all AI APIs are unavailable, emergency knowledge fallback guarantees a helpful answer.
  */
 export async function generateSupportResponse(
   userId: number,
@@ -194,12 +257,10 @@ export async function generateSupportResponse(
 
     return replyText;
   } catch (error) {
-    logger.error('All AI providers failed to generate content', error, { userId });
-
-    return (
-      "I'm temporarily experiencing a connection delay while consulting my knowledge base. " +
-      'Please give me a moment and ask your question again!'
-    );
+    logger.error('All AI providers failed, using emergency knowledge fallback', error, { userId });
+    const fallbackAnswer = getEmergencyKnowledgeResponse(sanitizedPrompt);
+    conversationManager.addMessage(userId, 'user', sanitizedPrompt);
+    conversationManager.addMessage(userId, 'model', fallbackAnswer);
+    return fallbackAnswer;
   }
 }
-
