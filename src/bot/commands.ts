@@ -11,6 +11,25 @@ export async function registerBotCommands(bot: Bot): Promise<void> {
     await bot.api.setMyCommands(PUBLIC_COMMANDS);
     logger.info('Telegram bot commands registered successfully');
 
+    // Suggest anonymous admin status when this bot is added as an admin.
+    // Existing group/channel memberships still need to be changed by a chat admin.
+    for (const for_channels of [false, true]) {
+      try {
+        const currentRights = await bot.api.getMyDefaultAdministratorRights({ for_channels });
+        if (!currentRights.is_anonymous) {
+          await bot.api.setMyDefaultAdministratorRights({
+            rights: { ...currentRights, is_anonymous: true },
+            for_channels,
+          });
+        }
+      } catch (error) {
+        logger.warn('Could not set anonymous administrator defaults', {
+          scope: for_channels ? 'channels' : 'groups',
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
     // Optionally set bot description and short description
     try {
       await bot.api.setMyDescription(BOT_CONFIG.description);

@@ -36,9 +36,7 @@ export async function sanitizeMessageMiddleware(
 
   // Length check to mitigate resource exhaustion
   if (rawText.length > MAX_INPUT_TEXT_LENGTH) {
-    logger.warn('Received message exceeding maximum character length', {
-      length: rawText.length,
-    });
+    logger.warn('Received message exceeding maximum character length');
 
     await ctx.reply(
       `⚠️ Your message is too long (maximum ${MAX_INPUT_TEXT_LENGTH} characters). Please send a shorter, more concise question.`

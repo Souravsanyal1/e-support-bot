@@ -22,6 +22,7 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
   const message = [
     `*Welcome to ${BOT_CONFIG.name}* 👋`,
     `Ask me about Elite Force, E-FORCE, and official updates.`,
+    `No sign-up is needed; chat history is not saved.`,
     '',
     `🌐 *Website:* https://elite-force.space`,
     `⏱️ *Timer:* https://timer.elite-force.space`,
@@ -77,7 +78,11 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
     `• X (Twitter): https://x.com/EliteForceOFC`,
     '',
     `*Privacy & Security:*`,
-    `• We do not collect or store personal identity, IP addresses, or phone numbers.`,
+    `• No sign-up, email, or phone number is needed to use the bot.`,
+    `• The bot does not save chat messages, chat history, or regular users' Telegram IDs.`,
+    `• Admin Telegram IDs may be kept in private server settings only to protect admin commands.`,
+    `• Telegram provides sender information to bots. A short-lived, one-way anti-spam key stays in memory and expires automatically.`,
+    `• Message text is sent to the configured AI provider only to generate a reply; it is not added to training data.`,
     `• We never ask for seed phrases, private keys, or passwords.`,
     `• Technical infrastructure and personal team data remain strictly confidential.`,
   ].join('\n');
@@ -89,7 +94,7 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
  * Handles the /ask command (e.g., /ask What is Elite Force?).
  */
 export async function handleAskCommand(ctx: Context): Promise<void> {
-  if (!ctx.from) return;
+  if (!ctx.from && !ctx.message?.sender_chat) return;
 
   const rawText = ctx.message?.text || '';
   // Strip the '/ask' prefix
@@ -187,7 +192,7 @@ export function shouldRespondInGroup(ctx: Context, text: string): boolean {
 export async function handleTextMessage(ctx: Context): Promise<void> {
   const text = ctx.message?.text?.trim();
 
-  if (!ctx.from || !text) return;
+  if ((!ctx.from && !ctx.message?.sender_chat) || !text) return;
 
   // Ignore commands that might have bypassed command routing
   if (text.startsWith('/')) {

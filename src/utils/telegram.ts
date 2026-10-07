@@ -293,18 +293,14 @@ export async function sendLoadingSticker(ctx: Context): Promise<number | null> {
     // Save the uploaded file_id returned by Telegram for future instant sends
     if (stickerMsg.sticker?.file_id && !cachedStickerFileId) {
       cachedStickerFileId = stickerMsg.sticker.file_id;
-      logger.info('Cached uploaded sticker file_id', { fileId: cachedStickerFileId });
+      logger.info('Cached loading sticker reference');
     }
 
-    logger.info('Animated loading sticker sent to chat', {
-      messageId: stickerMsg.message_id,
-      chatId: ctx.chat?.id,
-    });
+    logger.info('Animated loading sticker sent');
     return stickerMsg.message_id;
   } catch (err) {
     logger.warn('Failed to send animated loading sticker', {
       error: err instanceof Error ? err.message : String(err),
-      chatId: ctx.chat?.id,
     });
     return null;
   }
@@ -320,14 +316,10 @@ export async function deleteLoadingSticker(
   if (!messageId || !ctx.chat?.id) return;
   try {
     await ctx.api.deleteMessage(ctx.chat.id, messageId);
-    logger.info('Animated loading sticker removed from chat', {
-      messageId,
-      chatId: ctx.chat.id,
-    });
+    logger.info('Animated loading sticker removed');
   } catch (err) {
     logger.debug('Failed to delete loading sticker (might already be deleted)', {
       error: err instanceof Error ? err.message : String(err),
-      messageId,
     });
   }
 }

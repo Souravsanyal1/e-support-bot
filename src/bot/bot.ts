@@ -32,9 +32,7 @@ export function createBot(): Bot {
     const ctx = err.ctx;
     const error = err.error;
 
-    logger.error('Unhandled error in Telegram Bot execution', error, {
-      updateId: ctx?.update?.update_id,
-    });
+    logger.error('Unhandled error in Telegram Bot execution', error);
 
     // Channel posts are read-only inputs. Never send any error reply back to
     // a channel post, including when an upstream handler unexpectedly fails.

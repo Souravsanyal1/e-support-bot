@@ -86,10 +86,12 @@ export async function handleAdminUsers(ctx: Context): Promise<void> {
     `*👥 Elite Force AI — Privacy Status*`,
     '',
     `• User messages are not saved as training data.`,
-    `• Conversation history is disabled.`,
+    `• Chat history and regular users' raw Telegram IDs are not stored.`,
+    `• Configured admin IDs remain in private server settings for access control.`,
     `• Only public posts from @Elite_Force_Official update the knowledge file.`,
+    `• Message text is sent to the configured AI provider for the current reply only.`,
     '',
-    `_A temporary anti-spam counter is used only to rate-limit incoming requests._`,
+    `_A one-way, process-only anti-spam key is kept in memory briefly and cleared after its rate-limit window expires._`,
   ].join('\n');
 
   await safeReply(ctx, report);

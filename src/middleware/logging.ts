@@ -7,23 +7,18 @@ import { logger } from '../utils/logger';
  */
 export async function updateLoggerMiddleware(ctx: Context, next: NextFunction): Promise<void> {
   const start = Date.now();
-  const updateId = ctx.update.update_id;
-  const isCommand = ctx.message?.text?.startsWith('/');
-  const commandName = isCommand ? ctx.message?.text?.split(' ')[0] : undefined;
+  // Keep operational logs anonymous: do not log Telegram IDs, message content,
+  // lengths, or command names.
+  const updateType = Object.keys(ctx.update).find((key) => key !== 'update_id') || 'unknown';
 
-  logger.debug('Incoming Telegram update', {
-    updateId,
-    hasText: Boolean(ctx.message?.text),
-    textLength: ctx.message?.text?.length,
-    command: commandName,
-  });
+  logger.debug('Incoming Telegram update', { updateType });
 
   try {
     await next();
   } finally {
     const elapsed = Date.now() - start;
     logger.debug('Completed processing update', {
-      updateId,
+      updateType,
       elapsedMs: elapsed,
     });
   }

@@ -20,9 +20,11 @@ Designed with a free-tier-first architecture, privacy by design, zero long-term 
   * Input sanitization, length boundaries, and anti-spam rate limiting.
   * Webhook secret verification (`X-Telegram-Bot-Api-Secret-Token`) for webhook deployments.
 * **Privacy-First Architecture**:
+  * No sign-up or personal details are required to use the bot.
   * User messages are not retained as conversation history or used as training data.
   * Only public text and captions from `@Elite_Force_Official` are synchronized into the managed section of `AI_TRAINING_DATA.md`.
-  * Anti-spam counters are temporary and are not used for AI learning.
+  * Regular users' raw Telegram IDs and chat IDs are not written to application logs or saved to disk. Admin IDs can remain in private server settings for access control. A one-way, process-only key is used for temporary anti-spam limits and is cleared shortly after its rate-limit window expires.
+  * Message text is sent to the configured AI provider only to generate the current reply; it is not added to the bot's training data.
   * No collection or storage of emails, phone numbers, passwords, or seed phrases.
 * **Admin Management**:
   * Environment-controlled numeric admin IDs (`ADMIN_USER_IDS`).
@@ -151,9 +153,11 @@ npm test
 | `/about` | Explains the bot's mission, ecosystem pillars, and security |
 | `/ask <question>` | Directly prompts the AI assistant with a question |
 
-> **Direct Messaging:** Users can chat naturally without commands. Each message is handled on its own; the bot does not retain conversational history.
+> **Direct Messaging:** Users can chat naturally without registration or commands. Each message is handled on its own; the bot does not retain chat history or regular users' raw Telegram IDs. Telegram still provides sender information to bots, and message text is sent to the configured AI provider to generate a response.
 
 > **Group Chats:** The bot can reply to group questions, but group messages are never added to training data. Add it as a group admin, or disable Group Privacy through @BotFather so Telegram delivers regular group messages to it.
+
+> **Anonymous Admin Use:** The bot requests anonymous administrator status by default for groups and channels. A chat admin must enable it when adding the bot; for an existing chat, update the bot's administrator rights in that chat's settings. Anonymous sender-chat messages are handled without identifying the hidden admin. Regular members' own messages remain visible according to Telegram's rules.
 
 > **Channel Posts:** Add the bot to `@Elite_Force_Official` so Telegram can deliver new posts to it. The bot silently syncs new and edited text/captions into the managed section of `AI_TRAINING_DATA.md`; it never replies to a channel post. It starts with posts received after it is added; it cannot backfill older history. The training file includes a bounded digest of recent posts, while the local archive retains received posts for relevant lookups. User and group messages are never synced. Ask about Elite Force in a private chat with the bot.
 
