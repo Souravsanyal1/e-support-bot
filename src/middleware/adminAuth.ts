@@ -15,7 +15,7 @@ export async function requireAdmin(ctx: Context, next: NextFunction): Promise<vo
   }
 
   if (env.adminUserIds.size === 0) {
-    logger.warn('Admin command attempted but no ADMIN_USER_IDS are configured.', { userId });
+    logger.warn('Admin command attempted but no ADMIN_USER_IDS are configured.');
     await ctx.reply(
       '⚠️ Administrator features are currently disabled. No admin user IDs have been configured in server settings.'
     );
@@ -23,7 +23,7 @@ export async function requireAdmin(ctx: Context, next: NextFunction): Promise<vo
   }
 
   if (!env.adminUserIds.has(userId)) {
-    logger.warn('Unauthorized admin command attempt', { userId });
+    logger.warn('Unauthorized admin command attempt');
     await ctx.reply('⛔ Access denied. This command is reserved for administrators.');
     return;
   }

@@ -8,13 +8,11 @@ import { logger } from '../utils/logger';
 export async function updateLoggerMiddleware(ctx: Context, next: NextFunction): Promise<void> {
   const start = Date.now();
   const updateId = ctx.update.update_id;
-  const userId = ctx.from?.id;
   const isCommand = ctx.message?.text?.startsWith('/');
   const commandName = isCommand ? ctx.message?.text?.split(' ')[0] : undefined;
 
   logger.debug('Incoming Telegram update', {
     updateId,
-    userId,
     hasText: Boolean(ctx.message?.text),
     textLength: ctx.message?.text?.length,
     command: commandName,

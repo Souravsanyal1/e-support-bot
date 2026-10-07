@@ -2,8 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
 import { buildSystemPrompt } from './systemPrompt';
-import { conversationManager } from './conversation';
 import { ELITE_FORCE_KNOWLEDGE } from '../config/knowledge.config';
+import {
+  formatLaunchAnnouncementContext,
+  LaunchAnnouncement,
+} from './officialChannelKnowledge';
 
 // Initialize the optional Google Gen AI client if key is present
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
@@ -12,8 +15,38 @@ const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : nu
  * Emergency static knowledge fallback when both AI APIs are unavailable or exhausted.
  * Ensures the bot NEVER sends a generic connection error message.
  */
-function getEmergencyKnowledgeResponse(userMessage: string): string {
+function getEmergencyKnowledgeResponse(
+  userMessage: string,
+  launchAnnouncement?: LaunchAnnouncement | null,
+  officialChannelContext?: string | null
+): string {
   const query = userMessage.toLowerCase().trim();
+
+  if (query.includes('timer') || query.includes('countdown')) {
+    return `The official Elite Force timer is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.timer}`;
+  }
+
+  if (query.includes('website') || query.includes('web site') || query.includes('site link')) {
+    return `The official Elite Force website is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}`;
+  }
+
+  if (
+    launchAnnouncement &&
+    /\b(?:launch|launching|listing|date|when)\b|কবে|লঞ্চ|তারিখ/i.test(query)
+  ) {
+    return (
+      `The latest launch-related post from **${launchAnnouncement.sourceLabel}** says:\n\n` +
+      `“${launchAnnouncement.text}”\n\n` +
+      `Please rely on that official post for the exact launch timing. 🧡`
+    );
+  }
+
+  if (officialChannelContext) {
+    return (
+      `I found these relevant updates in the official Telegram channel. ` +
+      `Please treat the post wording as the verified source:\n\n${officialChannelContext}`
+    );
+  }
 
   if (
     query.includes('contract') ||
@@ -226,15 +259,25 @@ function getPrimaryProvider(): 'gemini' | 'openrouter' {
  * If all AI APIs are unavailable, emergency knowledge fallback guarantees a helpful answer.
  */
 export async function generateSupportResponse(
-  userId: number,
-  userMessage: string
+  userMessage: string,
+  launchAnnouncement?: LaunchAnnouncement | null,
+  officialChannelContext?: string | null
 ): Promise<string> {
   const sanitizedPrompt = userMessage.trim();
   if (!sanitizedPrompt) {
     return "Hey! 👋 I'm Elite Force AI. How can I help you today?";
   }
 
-  const history = conversationManager.getHistory(userId);
+  // User messages are used only for this response; no conversation history is
+  // retained or fed into later requests.
+  const history: Array<{ role: 'user' | 'model'; text: string }> = [];
+  const sourceContexts = [
+    launchAnnouncement ? formatLaunchAnnouncementContext(launchAnnouncement) : '',
+    officialChannelContext || '',
+  ].filter(Boolean);
+  const providerPrompt = sourceContexts.length
+    ? `${sanitizedPrompt}\n\n${sourceContexts.join('\n\n')}`
+    : sanitizedPrompt;
   let replyText = '';
 
   const primary = getPrimaryProvider();
@@ -249,10 +292,10 @@ export async function generateSupportResponse(
   async function tryProvider(provider: 'gemini' | 'openrouter'): Promise<string> {
     if (provider === 'gemini') {
       if (!ai) throw new Error('Gemini client not initialized (no API key)');
-      return await callGemini(sanitizedPrompt, history);
+      return await callGemini(providerPrompt, history);
     } else {
       if (!env.openrouterApiKey) throw new Error('OpenRouter API key not configured');
-      return await callOpenRouter(sanitizedPrompt, history);
+      return await callOpenRouter(providerPrompt, history);
     }
   }
 
@@ -271,16 +314,14 @@ export async function generateSupportResponse(
       logger.info('Fallback AI provider responded successfully', { provider: secondary });
     }
 
-    // Persist this turn into the sliding conversation window
-    conversationManager.addMessage(userId, 'user', sanitizedPrompt);
-    conversationManager.addMessage(userId, 'model', replyText);
-
     return replyText;
   } catch (error) {
-    logger.error('All AI providers failed, using emergency knowledge fallback', error, { userId });
-    const fallbackAnswer = getEmergencyKnowledgeResponse(sanitizedPrompt);
-    conversationManager.addMessage(userId, 'user', sanitizedPrompt);
-    conversationManager.addMessage(userId, 'model', fallbackAnswer);
+    logger.error('All AI providers failed, using emergency knowledge fallback', error);
+    const fallbackAnswer = getEmergencyKnowledgeResponse(
+      sanitizedPrompt,
+      launchAnnouncement,
+      officialChannelContext
+    );
     return fallbackAnswer;
   }
 }

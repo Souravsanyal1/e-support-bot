@@ -84,7 +84,7 @@ export async function rateLimitMiddleware(ctx: Context, next: NextFunction): Pro
   }
 
   if (rateLimiter.isRateLimited(userId)) {
-    logger.warn('Rate limit exceeded for user', { userId });
+    logger.warn('Rate limit exceeded');
     await ctx.reply(
       '⚠️ You are sending messages too quickly. Please wait a few seconds before trying again.'
     );

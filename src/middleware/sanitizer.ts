@@ -18,6 +18,13 @@ export async function sanitizeMessageMiddleware(
   ctx: Context,
   next: NextFunction
 ): Promise<void> {
+  // Channel post updates are read-only and may contain longer announcements.
+  // Pass them through without ever replying to the channel.
+  if (ctx.channelPost || ctx.editedChannelPost) {
+    await next();
+    return;
+  }
+
   const message = ctx.message ?? ctx.channelPost;
   const rawText = message?.text;
 
@@ -30,7 +37,6 @@ export async function sanitizeMessageMiddleware(
   // Length check to mitigate resource exhaustion
   if (rawText.length > MAX_INPUT_TEXT_LENGTH) {
     logger.warn('Received message exceeding maximum character length', {
-      userId: ctx.from?.id,
       length: rawText.length,
     });
 

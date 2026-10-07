@@ -9,33 +9,23 @@ import {
   sleep,
 } from '../utils/telegram';
 import { logger } from '../utils/logger';
+import {
+  getRelevantOfficialChannelContext,
+  getLaunchAnnouncementForQuestion,
+  observeOfficialChannelPost,
+} from '../ai/officialChannelKnowledge';
 
 /**
  * Handles the /start command.
  */
 export async function handleStartCommand(ctx: Context): Promise<void> {
-  const firstName = ctx.from?.first_name ? ` ${ctx.from.first_name}` : '';
   const message = [
-    `*Hey${firstName}! Welcome to ${BOT_CONFIG.name}* 👋`,
+    `*Welcome to ${BOT_CONFIG.name}* 👋`,
+    `Ask me about Elite Force, E-FORCE, and official updates.`,
     '',
-    `I am your official AI-powered community support assistant for the *Elite Force* ecosystem and the native *E-FORCE* token.`,
-    '',
-    `*What I can do for you:*`,
-    `• Explain the Elite Force ecosystem and E-FORCE token utility`,
-    `• Answer community questions in clear, concise English`,
-    `• Guide you directly to verified official announcements`,
-    '',
-    `*Official Channels:*`,
-    `📢 *Telegram Channel:* https://t.me/Elite_Force_Official`,
-    `🐦 *Official X (Twitter):* https://x.com/EliteForceOFC`,
-    '',
-    `*Ways to Interact:*`,
-    `• Send any question directly in this chat`,
-    `• Use \`/ask <question>\` to ask a specific question`,
-    `• Type \`/help\` for the command guide`,
-    `• Type \`/about\` for ecosystem and security information`,
-    '',
-    `🛡️ *Safety Reminder:* Official team members will *never* DM you first asking for funds, private keys, or seed phrases.`,
+    `🌐 *Website:* https://elite-force.space`,
+    `⏱️ *Timer:* https://timer.elite-force.space`,
+    `📢 *Telegram:* https://t.me/Elite_Force_Official`,
   ].join('\n');
 
   await safeReply(ctx, message);
@@ -99,8 +89,7 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
  * Handles the /ask command (e.g., /ask What is Elite Force?).
  */
 export async function handleAskCommand(ctx: Context): Promise<void> {
-  const userId = ctx.from?.id;
-  if (!userId) return;
+  if (!ctx.from) return;
 
   const rawText = ctx.message?.text || '';
   // Strip the '/ask' prefix
@@ -119,7 +108,11 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
-    const response = await generateSupportResponse(userId, query);
+    const response = await generateSupportResponse(
+      query,
+      getLaunchAnnouncementForQuestion(query),
+      getRelevantOfficialChannelContext(query)
+    );
 
     // Ensure the animated sticker is visible for at least 3000ms before deletion
     const elapsed = Date.now() - startTime;
@@ -132,7 +125,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     await safeReply(ctx, response, { replyToMessage: true });
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
-    logger.error('Error handling /ask command', error, { userId });
+    logger.error('Error handling /ask command', error);
     await safeReply(
       ctx,
       "I'm temporarily experiencing an issue generating an answer. Please try again in a moment."
@@ -141,71 +134,11 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
 }
 
 /**
- * Handles text channel posts. Telegram delivers these separately from messages,
- * and channel posts have no reliable user identity, so the channel ID is used
- * for conversation history when the original author is unavailable.
+ * Silently observes channel posts for launch announcements. Channel posts are
+ * never answered, regardless of their contents or commands.
  */
 export async function handleChannelPost(ctx: Context): Promise<void> {
-  const text = ctx.channelPost?.text?.trim();
-  const chatId = ctx.chat?.id;
-  if (!text || !chatId) return;
-
-  const botUsername = ctx.me?.username || BOT_CONFIG.username.replace(/^@/, '');
-  const commandMatch = text.match(/^\/([a-z0-9_]+)(?:@(\w+))?(?:\s|$)/i);
-
-  if (commandMatch) {
-    const [, command, targetUsername] = commandMatch;
-    if (targetUsername && targetUsername.toLowerCase() !== botUsername.toLowerCase()) return;
-
-    switch (command.toLowerCase()) {
-      case 'start':
-        await handleStartCommand(ctx);
-        return;
-      case 'help':
-        await handleHelpCommand(ctx);
-        return;
-      case 'about':
-        await handleAboutCommand(ctx);
-        return;
-      case 'ask': {
-        const query = text.replace(/^\/ask(?:@\w+)?/i, '').trim();
-        if (!query) {
-          await safeReply(
-            ctx,
-            'Please add a question after /ask, for example: /ask What is Elite Force?',
-            { replyToMessage: true }
-          );
-          return;
-        }
-        await answerChannelPost(ctx, ctx.from?.id ?? chatId, query);
-        return;
-      }
-      default:
-        // Ignore admin and unknown commands in channel posts.
-        return;
-    }
-  }
-
-  // Require an explicit mention in channels so ordinary announcements are not
-  // answered and the bot does not react to its own channel replies.
-  if (!text.toLowerCase().includes(`@${botUsername.toLowerCase()}`)) return;
-
-  const query = text.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
-  await answerChannelPost(ctx, ctx.from?.id ?? chatId, query || text);
-}
-
-async function answerChannelPost(ctx: Context, chatId: number, query: string): Promise<void> {
-  try {
-    const response = await generateSupportResponse(chatId, query);
-    await safeReply(ctx, response, { replyToMessage: true });
-  } catch (error) {
-    logger.error('Error handling channel post', error, { chatId });
-    await safeReply(
-      ctx,
-      "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
-      { replyToMessage: true }
-    );
-  }
+  observeOfficialChannelPost(ctx);
 }
 
 /**
@@ -252,10 +185,9 @@ export function shouldRespondInGroup(ctx: Context, text: string): boolean {
  * Works in private DMs and responds to every text message in community groups.
  */
 export async function handleTextMessage(ctx: Context): Promise<void> {
-  const userId = ctx.from?.id;
   const text = ctx.message?.text?.trim();
 
-  if (!userId || !text) return;
+  if (!ctx.from || !text) return;
 
   // Ignore commands that might have bypassed command routing
   if (text.startsWith('/')) {
@@ -276,7 +208,11 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
-    const response = await generateSupportResponse(userId, queryToProcess);
+    const response = await generateSupportResponse(
+      queryToProcess,
+      getLaunchAnnouncementForQuestion(queryToProcess),
+      getRelevantOfficialChannelContext(queryToProcess)
+    );
 
     // Ensure the animated sticker is visible for at least 3000ms so user clearly sees the animation
     const elapsed = Date.now() - startTime;
@@ -289,7 +225,7 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     await safeReply(ctx, response, { replyToMessage: true });
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
-    logger.error('Error handling direct text message', error, { userId });
+    logger.error('Error handling direct text message', error);
     await safeReply(
       ctx,
       "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",

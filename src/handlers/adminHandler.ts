@@ -1,7 +1,6 @@
 import { Context } from 'grammy';
-import { conversationManager } from '../ai/conversation';
 import { env } from '../config/env.config';
-import { safeReply, splitMessage } from '../utils/telegram';
+import { safeReply } from '../utils/telegram';
 import { logger } from '../utils/logger';
 
 /**
@@ -35,7 +34,6 @@ function toMB(bytes: number): string {
 export async function handleAdminStatus(ctx: Context): Promise<void> {
   const uptime = formatUptime(process.uptime());
   const mem = process.memoryUsage();
-  const stats = conversationManager.getStats();
 
   const report = [
     `*📊 Elite Force AI — System Telemetry*`,
@@ -51,11 +49,9 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
     `• *Heap Total:* ${toMB(mem.heapTotal)} MB`,
     `• *RSS:* ${toMB(mem.rss)} MB`,
     '',
-    `*Session Telemetry:*`,
-    `• *Active Sessions:* ${stats.activeSessions}`,
-    `• *Total Tracked Users:* ${stats.totalTrackedUsers}`,
+    `• *User conversation history:* Disabled`,
+    `• *Training source:* @Elite_Force_Official only`,
     `• *Authorized Admins:* ${env.adminUserIds.size}`,
-    `• *Session TTL:* ${env.sessionTtlMinutes} minutes`,
     `• *Rate Limit Window:* ${env.rateLimitMaxMessages} msgs / ${env.rateLimitWindowSeconds}s`,
   ].join('\n');
 
@@ -66,18 +62,14 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
  * Handles the admin /reload command.
  */
 export async function handleAdminReload(ctx: Context): Promise<void> {
-  const clearedCount = conversationManager.clearAllSessions();
-
-  logger.info('Admin triggered system reload', {
-    adminId: ctx.from?.id,
-    clearedSessions: clearedCount,
-  });
+  logger.info('Admin triggered system reload');
 
   const message = [
     `*🔄 Elite Force AI — Reload Complete*`,
     '',
-    `• *In-memory conversation caches cleared:* ${clearedCount} sessions`,
-    `• *Knowledge base & system prompt:* Re-synchronized`,
+    `• *User conversation memory:* Disabled`,
+    `• *Knowledge base & system prompt:* Re-read for the next response`,
+    `• *Official channel training data:* Auto-synced from new/edit posts`,
     `• *Active Model:* \`${env.geminiModel}\``,
     '',
     `System is running with optimal configuration.`,
@@ -90,17 +82,14 @@ export async function handleAdminReload(ctx: Context): Promise<void> {
  * Handles the admin /users command.
  */
 export async function handleAdminUsers(ctx: Context): Promise<void> {
-  const stats = conversationManager.getStats();
-
   const report = [
-    `*👥 Elite Force AI — User Metrics*`,
+    `*👥 Elite Force AI — Privacy Status*`,
     '',
-    `• *Total Distinct Users Encountered:* ${stats.totalTrackedUsers}`,
-    `• *Current Active In-Memory Sessions:* ${stats.activeSessions}`,
-    `• *Sliding History Window:* ${env.maxConversationHistory} turns`,
-    `• *Session Inactivity Timeout:* ${env.sessionTtlMinutes} minutes`,
+    `• User messages are not saved as training data.`,
+    `• Conversation history is disabled.`,
+    `• Only public posts from @Elite_Force_Official update the knowledge file.`,
     '',
-    `_Note: In strict compliance with privacy standards, zero personal user information, usernames, IP addresses, or contact details are retained._`,
+    `_A temporary anti-spam counter is used only to rate-limit incoming requests._`,
   ].join('\n');
 
   await safeReply(ctx, report);
@@ -110,63 +99,9 @@ export async function handleAdminUsers(ctx: Context): Promise<void> {
  * Handles the admin /broadcast <message> command.
  */
 export async function handleAdminBroadcast(ctx: Context): Promise<void> {
-  const rawText = ctx.message?.text || '';
-  const broadcastText = rawText.replace(/^\/broadcast(@\w+)?/i, '').trim();
-
-  if (!broadcastText) {
-    await safeReply(
-      ctx,
-      `*Broadcast Usage:*\n\`/broadcast <announcement message>\`\n\nPlease supply the announcement text to broadcast to all tracked community members.`
-    );
-    return;
-  }
-
-  const userIds = conversationManager.getAllKnownUserIds();
-
-  if (userIds.length === 0) {
-    await safeReply(
-      ctx,
-      `*Notice:* No active community users have interacted with the bot in this session yet.`
-    );
-    return;
-  }
-
+  logger.info('Admin broadcast command declined because recipient IDs are not retained');
   await safeReply(
     ctx,
-    `*Starting broadcast to ${userIds.length} users...* 📢\nPlease wait while messages are queued.`
-  );
-
-  let successCount = 0;
-  let failCount = 0;
-
-  const chunks = splitMessage(broadcastText);
-
-  // Send sequentially with slight delay to comply with Telegram 30 msgs/second limit
-  for (const targetUserId of userIds) {
-    try {
-      for (const chunk of chunks) {
-        await ctx.api.sendMessage(targetUserId, `📢 *Elite Force Announcement*\n\n${chunk}`, {
-          parse_mode: 'Markdown',
-        });
-      }
-      successCount++;
-    } catch {
-      failCount++;
-    }
-
-    // 40ms delay = max 25 messages/second
-    await new Promise((resolve) => setTimeout(resolve, 40));
-  }
-
-  logger.info('Broadcast execution completed', {
-    adminId: ctx.from?.id,
-    successCount,
-    failCount,
-    total: userIds.length,
-  });
-
-  await safeReply(
-    ctx,
-    `*📢 Broadcast Complete*\n\n• *Delivered:* ${successCount}\n• *Failed/Blocked:* ${failCount}\n• *Total Attempted:* ${userIds.length}`
+    `Broadcast is disabled because the bot does not store user IDs. Please publish announcements in the official channel.`
   );
 }

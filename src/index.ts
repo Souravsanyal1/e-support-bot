@@ -6,7 +6,6 @@ import { logger } from './utils/logger';
 import { createBot } from './bot/bot';
 import { registerBotCommands } from './bot/commands';
 import { rateLimiter } from './middleware/rateLimiter';
-import { conversationManager } from './ai/conversation';
 
 // Global Process Safety Guards (Prevent unhandled async errors from crashing the bot)
 process.on('unhandledRejection', (reason: unknown) => {
@@ -71,7 +70,6 @@ async function main(): Promise<void> {
 
     try {
       rateLimiter.destroy();
-      conversationManager.destroy();
 
       if (httpServer) {
         httpServer.close();

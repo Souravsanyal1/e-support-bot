@@ -20,8 +20,10 @@ Designed with a free-tier-first architecture, privacy by design, zero long-term 
   * Input sanitization, length boundaries, and anti-spam rate limiting.
   * Webhook secret verification (`X-Telegram-Bot-Api-Secret-Token`) for webhook deployments.
 * **Privacy-First Architecture**:
-  * In-memory sliding window session memory with automatic inactivity TTL pruning.
-  * Zero collection or storage of IP addresses, emails, phone numbers, or passwords.
+  * User messages are not retained as conversation history or used as training data.
+  * Only public text and captions from `@Elite_Force_Official` are synchronized into the managed section of `AI_TRAINING_DATA.md`.
+  * Anti-spam counters are temporary and are not used for AI learning.
+  * No collection or storage of emails, phone numbers, passwords, or seed phrases.
 * **Admin Management**:
   * Environment-controlled numeric admin IDs (`ADMIN_USER_IDS`).
   * Admin-only commands: `/status`, `/reload`, `/users`, and `/broadcast`.
@@ -149,19 +151,19 @@ npm test
 | `/about` | Explains the bot's mission, ecosystem pillars, and security |
 | `/ask <question>` | Directly prompts the AI assistant with a question |
 
-> **Direct Messaging:** Users can also chat naturally without commands. The AI automatically maintains recent conversational context.
+> **Direct Messaging:** Users can chat naturally without commands. Each message is handled on its own; the bot does not retain conversational history.
 
-> **Group Chats:** The bot replies to every text message without a mention. Add it as a group admin, or disable Group Privacy through @BotFather so Telegram delivers regular group messages to it. Re-add the bot after changing its privacy setting.
+> **Group Chats:** The bot can reply to group questions, but group messages are never added to training data. Add it as a group admin, or disable Group Privacy through @BotFather so Telegram delivers regular group messages to it.
 
-> **Channel Posts:** Add the bot as a channel administrator with permission to post messages. It replies to `/ask <question>` posts and posts that mention `@Elite_Force_Support_Bot`; ordinary announcements are ignored. For member comments, add the bot to the channel's linked discussion group and mention it in questions.
+> **Channel Posts:** Add the bot to `@Elite_Force_Official` so Telegram can deliver new posts to it. The bot silently syncs new and edited text/captions into the managed section of `AI_TRAINING_DATA.md`; it never replies to a channel post. It starts with posts received after it is added; it cannot backfill older history. The training file includes a bounded digest of recent posts, while the local archive retains received posts for relevant lookups. User and group messages are never synced. Ask about Elite Force in a private chat with the bot.
 
 ### Administrator Commands (Protected)
 | Command | Description |
 | :--- | :--- |
-| `/status` | Displays system uptime, memory usage, bot mode, model, and active sessions |
-| `/reload` | Flushes session cache and resynchronizes knowledge base |
-| `/broadcast <msg>` | Safely queues and broadcasts an announcement to active users |
-| `/users` | Displays privacy-preserving session and user counts |
+| `/status` | Displays system uptime, memory usage, bot mode, model, and privacy status |
+| `/reload` | Reloads knowledge and system prompt on the next response |
+| `/broadcast <msg>` | Disabled because recipient user IDs are not stored; publish in the official channel |
+| `/users` | Displays the bot's privacy and data-retention status |
 
 ---
 

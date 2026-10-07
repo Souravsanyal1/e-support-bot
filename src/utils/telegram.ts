@@ -106,7 +106,14 @@ export async function safeReply(
   text: string,
   options?: { replyToMessage?: boolean }
 ): Promise<void> {
-  const sourceMessageId = ctx.message?.message_id ?? ctx.channelPost?.message_id;
+  // Keep channel posts strictly read-only even if a future handler calls the
+  // shared reply helper with a channel update context.
+  if (ctx.channelPost || ctx.editedChannelPost) {
+    logger.warn('Suppressed an attempted reply to a Telegram channel post');
+    return;
+  }
+
+  const sourceMessageId = ctx.message?.message_id;
   const replyParamsBase =
     options?.replyToMessage && sourceMessageId
       ? { message_id: sourceMessageId }

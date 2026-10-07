@@ -25,6 +25,11 @@ export const ELITE_FORCE_KNOWLEDGE = {
     xHandle: '@EliteForceOFC',
   },
 
+  officialSystemLinks: {
+    website: 'https://elite-force.space',
+    timer: 'https://timer.elite-force.space',
+  },
+
   nativeToken: {
     name: 'E-FORCE',
     symbol: 'E-FORCE',

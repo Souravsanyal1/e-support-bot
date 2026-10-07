@@ -63,6 +63,11 @@ https://t.me/Elite_Force_Official
 
 https://x.com/EliteForceOFC
 
+### Official System Links
+
+* **Website:** https://elite-force.space
+* **Timer:** https://timer.elite-force.space
+
 ### Important Verification Rule
 
 Only information published through the **official Elite Force Telegram channel or official X account** should be treated as an official announcement.
@@ -512,3 +517,14 @@ How can I build a Python Discord bot?
 **Elite Force AI:**
 
 > I'm **(bot_name)**, the personal AI assistant for the **Elite Force Ecosystem**. I’m here to help with Elite Force, E-FORCE, and official ecosystem-related questions. Feel free to ask me anything about Elite Force.
+
+---
+
+<!-- AUTO_SYNC_OFFICIAL_CHANNEL_START -->
+## Auto-Synced Updates from the Official Telegram Channel
+
+Source: @Elite_Force_Official. These are public text and caption updates received by the bot.
+This section is refreshed from channel posts only. User messages, group messages, and private chats are never added here.
+
+_No channel posts have been synchronized yet._
+<!-- AUTO_SYNC_OFFICIAL_CHANNEL_END -->

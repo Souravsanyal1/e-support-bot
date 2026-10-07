@@ -34,8 +34,11 @@ export function createBot(): Bot {
 
     logger.error('Unhandled error in Telegram Bot execution', error, {
       updateId: ctx?.update?.update_id,
-      userId: ctx?.from?.id,
     });
+
+    // Channel posts are read-only inputs. Never send any error reply back to
+    // a channel post, including when an upstream handler unexpectedly fails.
+    if (ctx?.channelPost || ctx?.editedChannelPost) return;
 
     // Provide friendly, non-technical feedback to user without exposing stack traces
     try {
@@ -54,6 +57,11 @@ export function createBot(): Bot {
   bot.use(rateLimitMiddleware);
   bot.use(sanitizeMessageMiddleware);
 
+  // Channel updates are registered explicitly for Telegram polling/webhooks.
+  // These handlers only sync official posts and never call next or send a reply.
+  bot.on('channel_post', handleChannelPost);
+  bot.on('edited_channel_post', handleChannelPost);
+
   // 3. Public User Commands
   bot.command('start', handleStartCommand);
   bot.command('help', handleHelpCommand);
@@ -68,9 +76,6 @@ export function createBot(): Bot {
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);
-
-  // Channel posts use a separate Telegram update type from regular messages.
-  bot.on('channel_post:text', handleChannelPost);
 
   // 6. Community Group Member Updates (Welcome message when bot joins)
   bot.on('message:new_chat_members', handleNewChatMembers);
