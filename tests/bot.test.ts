@@ -41,9 +41,11 @@ async function runTests() {
   console.log('Testing System Prompt Generation & Privacy Guardrails...');
   const prompt = buildSystemPrompt();
   assert(prompt.includes('Elite Force AI'), 'Prompt must include bot name');
-  assert(prompt.includes('Bengali'), 'Prompt must include Bengali support');
-  assert(prompt.includes('Banglish'), 'Prompt must include Banglish support');
-  assert(prompt.includes('NEVER FABRICATE'), 'Prompt must include strict safety boundaries');
+  assert(prompt.includes('ENGLISH ONLY'), 'Prompt must enforce English-only response rule');
+  assert(prompt.includes('E-FORCE'), 'Prompt must include E-FORCE token details');
+  assert(prompt.includes('https://t.me/Elite_Force_Official'), 'Prompt must include official Telegram channel');
+  assert(prompt.includes('https://x.com/EliteForceOFC'), 'Prompt must include official X profile');
+  assert(prompt.includes('DO NOT INVENT LAUNCH OR LISTING DATES'), 'Prompt must prohibit inventing dates');
   assert(prompt.includes('STRICT PRIVACY & INFRASTRUCTURE CONFIDENTIALITY'), 'Prompt must enforce server privacy');
   assert(prompt.includes('NEVER reveal server information'), 'Prompt must ban server disclosures');
   assert(prompt.includes('NEVER reveal personal information about developers'), 'Prompt must ban developer disclosures');
