@@ -121,9 +121,9 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   try {
     const response = await generateSupportResponse(userId, query);
 
-    // Ensure the animated sticker is visible for at least 1500ms before deletion
+    // Ensure the animated sticker is visible for at least 2500ms before deletion
     const elapsed = Date.now() - startTime;
-    const minDisplayMs = 1500;
+    const minDisplayMs = 2500;
     if (elapsed < minDisplayMs) {
       await sleep(minDisplayMs - elapsed);
     }
@@ -226,9 +226,9 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   try {
     const response = await generateSupportResponse(userId, queryToProcess);
 
-    // Ensure the animated sticker is visible for at least 1500ms before deletion
+    // Ensure the animated sticker is visible for at least 2500ms before deletion
     const elapsed = Date.now() - startTime;
-    const minDisplayMs = 1500;
+    const minDisplayMs = 2500;
     if (elapsed < minDisplayMs) {
       await sleep(minDisplayMs - elapsed);
     }
