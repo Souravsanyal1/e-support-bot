@@ -7,6 +7,7 @@ import {
   stripAllHtmlTags,
   TelegramEntity,
 } from './telegramFormatter';
+import { LOADING_STICKER_FILE_ID } from '../config/bot.config';
 
 export const TELEGRAM_MAX_MESSAGE_LENGTH = 4096;
 
@@ -197,3 +198,46 @@ export async function sendTypingAction(ctx: Context): Promise<void> {
     });
   }
 }
+
+/**
+ * Sends the official Elite Force loading animated sticker (#6 Trophy 🏆).
+ * Pack: https://t.me/addstickers/EliteForceWeb3
+ * Returns the sent message ID, or null if sending failed.
+ */
+export async function sendLoadingSticker(ctx: Context): Promise<number | null> {
+  try {
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+    const replyParams =
+      isGroup && ctx.message?.message_id
+        ? { message_id: ctx.message.message_id }
+        : undefined;
+
+    const stickerMsg = await ctx.replyWithSticker(LOADING_STICKER_FILE_ID, {
+      reply_parameters: replyParams,
+    });
+    return stickerMsg.message_id;
+  } catch (err) {
+    logger.debug('Failed to send loading sticker', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+/**
+ * Deletes the loading sticker cleanly when the response is ready.
+ */
+export async function deleteLoadingSticker(
+  ctx: Context,
+  messageId: number | null
+): Promise<void> {
+  if (!messageId || !ctx.chat?.id) return;
+  try {
+    await ctx.api.deleteMessage(ctx.chat.id, messageId);
+  } catch (err) {
+    logger.debug('Failed to delete loading sticker', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+

@@ -11,6 +11,13 @@ export const BOT_CONFIG = {
 } as const;
 
 /**
+ * Official loading sticker displayed while AI generates responses.
+ * Pack: https://t.me/addstickers/EliteForceWeb3 (Sticker #6: Trophy 🏆 animated)
+ */
+export const LOADING_STICKER_FILE_ID =
+  'CAACAgUAAxUAAWrF3Jy0Btgu2qKJrEKpHrnUNWLlAALDKgACMIAIVmTsKwTA2B2hPQQ';
+
+/**
  * Standard public bot commands registered with Telegram via BotFather / setMyCommands.
  */
 export const PUBLIC_COMMANDS: readonly BotCommand[] = [

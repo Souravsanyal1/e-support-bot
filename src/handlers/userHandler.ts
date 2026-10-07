@@ -1,7 +1,12 @@
 import { Context } from 'grammy';
 import { generateSupportResponse } from '../ai/gemini';
 import { BOT_CONFIG, PUBLIC_COMMANDS } from '../config/bot.config';
-import { safeReply, sendTypingAction } from '../utils/telegram';
+import {
+  safeReply,
+  sendTypingAction,
+  sendLoadingSticker,
+  deleteLoadingSticker,
+} from '../utils/telegram';
 import { logger } from '../utils/logger';
 
 /**
@@ -109,11 +114,14 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
+  const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
     const response = await generateSupportResponse(userId, query);
+    await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, response, { replyToMessage: true });
   } catch (error) {
+    await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling /ask command', error, { userId });
     await safeReply(
       ctx,
@@ -202,11 +210,14 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
+  const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
     const response = await generateSupportResponse(userId, queryToProcess);
+    await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, response, { replyToMessage: isGroup });
   } catch (error) {
+    await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling direct text message', error, { userId });
     await safeReply(
       ctx,
