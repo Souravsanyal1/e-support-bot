@@ -25,9 +25,7 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
     `Ask me about Elite Force, E-FORCE, and official updates.`,
     `No sign-up is needed; chat history is not saved.`,
     '',
-    `🌐 [Website](https://elite-force.space)`,
-    `⏱️ [Timer](https://timer.elite-force.space)`,
-    `📢 [Telegram](https://t.me/Elite_Force_Official)`,
+    `🌐 [Website](https://elite-force.space) • ⏱️ [Timer](https://timer.elite-force.space) • 📢 [Telegram](https://t.me/Elite_Force_Official)`,
   ].join('\n');
 
   await safeReply(ctx, message);
@@ -51,8 +49,7 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     `You can chat directly! Simply send any question, and I'll respond in clear, natural English.`,
     '',
     `*Official Channels:*`,
-    `• Telegram: https://t.me/Elite_Force_Official`,
-    `• X (Twitter): https://x.com/EliteForceOFC`,
+    `📢 [Telegram](https://t.me/Elite_Force_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Important Rules:*`,
     `• E-FORCE launch and listing dates are in development and will only be shared via official channels.`,
@@ -75,8 +72,7 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
     `*Status:* In active development`,
     '',
     `*Official Verified Channels:*`,
-    `• Telegram: https://t.me/Elite_Force_Official`,
-    `• X (Twitter): https://x.com/EliteForceOFC`,
+    `📢 [Telegram](https://t.me/Elite_Force_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Privacy & Security:*`,
     `• No sign-up, email, or phone number is needed to use the bot.`,
