@@ -25,9 +25,9 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
     `Ask me about Elite Force, E-FORCE, and official updates.`,
     `No sign-up is needed; chat history is not saved.`,
     '',
-    `🌐 *Website:* https://elite-force.space`,
-    `⏱️ *Timer:* https://timer.elite-force.space`,
-    `📢 *Telegram:* https://t.me/Elite_Force_Official`,
+    `🌐 [Website](https://elite-force.space)`,
+    `⏱️ [Timer](https://timer.elite-force.space)`,
+    `📢 [Telegram](https://t.me/Elite_Force_Official)`,
   ].join('\n');
 
   await safeReply(ctx, message);
