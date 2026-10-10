@@ -4,6 +4,7 @@ import { logger } from '../utils/logger';
 import { updateLoggerMiddleware } from '../middleware/logging';
 import { rateLimitMiddleware } from '../middleware/rateLimiter';
 import { sanitizeMessageMiddleware } from '../middleware/sanitizer';
+import { languageFilterMiddleware } from '../middleware/languageFilter';
 import { requireAdmin } from '../middleware/adminAuth';
 import {
   handleStartCommand,
@@ -54,6 +55,7 @@ export function createBot(): Bot {
   bot.use(updateLoggerMiddleware);
   bot.use(rateLimitMiddleware);
   bot.use(sanitizeMessageMiddleware);
+  bot.use(languageFilterMiddleware);
 
   // Channel updates are registered explicitly for Telegram polling/webhooks.
   // These handlers only sync official posts and never call next or send a reply.

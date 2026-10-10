@@ -14,6 +14,7 @@ import {
   getLaunchAnnouncementForQuestion,
   observeOfficialChannelPost,
 } from '../ai/officialChannelKnowledge';
+import { checkMessageLanguage } from '../utils/languageDetector';
 
 /**
  * Handles the /start command.
@@ -105,6 +106,17 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
       ctx,
       `Please provide a question after the command, for example:\n\`/ask What is Elite Force?\`\n\nOr you can simply send your question directly!`
     );
+    return;
+  }
+
+  // Reject and remove non-English / Bangla / Banglish queries without replying
+  const langCheck = checkMessageLanguage(query);
+  if (!langCheck.isEnglish) {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      // Ignore
+    }
     return;
   }
 
@@ -207,6 +219,17 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     .trim();
 
   const queryToProcess = cleanedText || text;
+
+  // Reject and remove non-English / Bangla / Banglish queries without replying
+  const langCheck = checkMessageLanguage(queryToProcess);
+  if (!langCheck.isEnglish) {
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      // Ignore
+    }
+    return;
+  }
 
   await sendTypingAction(ctx);
   const startTime = Date.now();

@@ -132,6 +132,165 @@ async function runTests() {
   assert(plainText.includes('Elite Force'), 'Must preserve core text');
   console.log('✓ Rich text & animated custom emoji formatter passed');
 
+  // Test 9: Language Detector (Bangla script, Banglish, other non-English, English)
+  console.log('Testing Language Detector...');
+  const { checkMessageLanguage } = await import('../src/utils/languageDetector');
+
+  // 9a. Bangla Script (Bengali alphabet)
+  const bangla1 = checkMessageLanguage('কেমন আছেন ভাই?');
+  assert.strictEqual(bangla1.isEnglish, false, 'Bengali script must be detected as non-English');
+  assert.strictEqual(bangla1.language, 'bangla', 'Language must be bangla');
+
+  const bangla2 = checkMessageLanguage('কবে লঞ্চ হবে?');
+  assert.strictEqual(bangla2.isEnglish, false, 'Bengali launch question must be detected');
+
+  // 9b. Banglish (Romanized Bengali)
+  const banglish1 = checkMessageLanguage('kemon acho vai');
+  assert.strictEqual(banglish1.isEnglish, false, 'Banglish "kemon acho vai" must be rejected');
+  assert.strictEqual(banglish1.language, 'banglish', 'Must identify banglish');
+
+  const banglish2 = checkMessageLanguage('vai kobe launch hobe?');
+  assert.strictEqual(banglish2.isEnglish, false, 'Banglish launch question must be rejected');
+
+  const banglish3 = checkMessageLanguage('bhai listing kobe hobe?');
+  assert.strictEqual(banglish3.isEnglish, false, 'Banglish listing question must be rejected');
+
+  const banglish4 = checkMessageLanguage('amader token er price koto?');
+  assert.strictEqual(banglish4.isEnglish, false, 'Banglish price question must be rejected');
+
+  const banglish5 = checkMessageLanguage('tumi ki amake help korte paro?');
+  assert.strictEqual(banglish5.isEnglish, false, 'Banglish help question must be rejected');
+
+  const banglish6 = checkMessageLanguage('dhonnobad bhai');
+  assert.strictEqual(banglish6.isEnglish, false, 'Banglish thank you must be rejected');
+
+  const banglish7 = checkMessageLanguage('thik ache bro');
+  assert.strictEqual(banglish7.isEnglish, false, 'Banglish "thik ache" must be rejected');
+
+  // 9c. Other non-English languages (Hindi/Hinglish, Spanish, French, Cyrillic, Arabic)
+  const hindi = checkMessageLanguage('kya haal hai bhai');
+  assert.strictEqual(hindi.isEnglish, false, 'Hinglish must be rejected');
+
+  const spanish = checkMessageLanguage('hola como estas amigo');
+  assert.strictEqual(spanish.isEnglish, false, 'Spanish must be rejected');
+
+  const french = checkMessageLanguage('bonjour comment ca va');
+  assert.strictEqual(french.isEnglish, false, 'French must be rejected');
+
+  const cyrillic = checkMessageLanguage('привет как дела');
+  assert.strictEqual(cyrillic.isEnglish, false, 'Cyrillic script must be rejected');
+
+  const arabic = checkMessageLanguage('مرحبا كيف الحال');
+  assert.strictEqual(arabic.isEnglish, false, 'Arabic script must be rejected');
+
+  // 9d. Valid English
+  const english1 = checkMessageLanguage('What is Elite Force?');
+  assert.strictEqual(english1.isEnglish, true, 'Standard English question must pass');
+
+  const english2 = checkMessageLanguage('When will the E-FORCE token be listed on exchanges?');
+  assert.strictEqual(english2.isEnglish, true, 'Complex English question must pass');
+
+  const english3 = checkMessageLanguage('Hello, can you help me with the official website link?');
+  assert.strictEqual(english3.isEnglish, true, 'Friendly English question must pass');
+
+  const english4 = checkMessageLanguage('Who is the founder and CEO of Elite Force?');
+  assert.strictEqual(english4.isEnglish, true, 'English question about founder must pass');
+
+  const english5 = checkMessageLanguage('Hi');
+  assert.strictEqual(english5.isEnglish, true, 'English greeting must pass');
+
+  const english6 = checkMessageLanguage('gm guys');
+  assert.strictEqual(english6.isEnglish, true, 'English crypto slang must pass');
+  console.log('✓ Language detector passed (Bangla, Banglish, Foreign, English all verified)');
+
+  // Test 10: Language Filter Middleware
+  console.log('Testing Language Filter Middleware...');
+  const { languageFilterMiddleware } = await import('../src/middleware/languageFilter');
+
+  let deletedMessage = false;
+  let nextCalled = false;
+
+  const mockNonEnglishCtx = {
+    message: { text: 'kobe launch hobe bhai?', message_id: 101 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      deletedMessage = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockNonEnglishCtx, async () => {
+    nextCalled = true;
+  });
+
+  assert.strictEqual(deletedMessage, true, 'Middleware must delete non-English/Banglish message');
+  assert.strictEqual(nextCalled, false, 'Middleware must NOT call next() for non-English message (no reply)');
+
+  // Test English message through middleware
+  let enDeleted = false;
+  let enNextCalled = false;
+
+  const mockEnglishCtx = {
+    message: { text: 'When is the official launch?', message_id: 102 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      enDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockEnglishCtx, async () => {
+    enNextCalled = true;
+  });
+
+  assert.strictEqual(enDeleted, false, 'Middleware must NOT delete English message');
+  assert.strictEqual(enNextCalled, true, 'Middleware MUST call next() for English message');
+
+  // Test /ask command in Banglish through middleware
+  let askDeleted = false;
+  let askNextCalled = false;
+
+  const mockAskBanglishCtx = {
+    message: { text: '/ask kemon acho vai', message_id: 103 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      askDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockAskBanglishCtx, async () => {
+    askNextCalled = true;
+  });
+
+  assert.strictEqual(askDeleted, true, 'Middleware must delete Banglish /ask command');
+  assert.strictEqual(askNextCalled, false, 'Middleware must NOT call next() for Banglish /ask (no reply)');
+
+  // Test /ask command in English through middleware
+  let askEnDeleted = false;
+  let askEnNextCalled = false;
+
+  const mockAskEnCtx = {
+    message: { text: '/ask What is Elite Force?', message_id: 104 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      askEnDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockAskEnCtx, async () => {
+    askEnNextCalled = true;
+  });
+
+  assert.strictEqual(askEnDeleted, false, 'Middleware must NOT delete English /ask command');
+  assert.strictEqual(askEnNextCalled, true, 'Middleware MUST call next() for English /ask command');
+  console.log('✓ Language filter middleware passed (silently deletes non-English, passes English)');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();

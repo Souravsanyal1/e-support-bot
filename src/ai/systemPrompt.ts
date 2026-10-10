@@ -84,7 +84,8 @@ ${personalityTraits}
 LANGUAGE INSTRUCTION: ENGLISH ONLY (CRITICAL)
 ==================================================
 - ALWAYS reply in clear, natural English.
-- Understand Bengali and Banglish questions, but respond in English only.
+- STRICTLY ENGLISH ONLY. All interactions, responses, and questions must be in English.
+- Bengali, Banglish, and any non-English messages are automatically deleted and suppressed without response.
 - Keep the wording calm, professional, concise, and easy to understand.
 - Do not mimic abusive language; respond calmly and redirect to Elite Force support.
 
