@@ -51,7 +51,7 @@ function startKeepAlivePing(port: number): void {
 }
 
 async function main(): Promise<void> {
-  logger.info('Initializing Elite Force AI Bot...', {
+  logger.info("Initializing Celia, your System & Group Management Admin...", {
     mode: env.botMode,
     model: env.geminiModel,
     nodeVersion: process.version,
@@ -95,14 +95,14 @@ async function main(): Promise<void> {
 
   // Root endpoint for browser verification & UptimeRobot (supports GET & HEAD)
   app.all('/', (_req: Request, res: Response) => {
-    res.status(200).send('Elite Force AI Bot is online and running! 🚀');
+    res.status(200).send("Celia, your System & Group Management Admin is online and running! 🚀");
   });
 
   // Health check endpoint (for cloud health monitoring & keep-awake pingers)
   app.all('/health', (_req: Request, res: Response) => {
     res.status(200).json({
       status: 'healthy',
-      service: 'Elite Force AI Bot',
+      service: "Celia, your System & Group Management Admin",
       mode: env.botMode,
       uptimeSeconds: Math.floor(process.uptime()),
     });
@@ -191,7 +191,7 @@ async function main(): Promise<void> {
           drop_pending_updates: false,
           onStart: (botInfo) => {
             retryDelayMs = 2000; // Reset backoff on successful connect
-            logger.info(`Elite Force AI Bot is online and running! 🚀`, {
+            logger.info(`Celia, your System & Group Management Admin is online and running! 🚀`, {
               username: botInfo.username,
               id: botInfo.id,
             });

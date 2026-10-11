@@ -104,7 +104,7 @@ function updateTrainingFile(): void {
   try {
     let contents = fs.existsSync(TRAINING_FILE_PATH)
       ? fs.readFileSync(TRAINING_FILE_PATH, 'utf8')
-      : '# Elite Force AI — Training Data\n';
+      : "# I'm Celia, your System & Group Management Admin. — Training Data\n";
     const start = contents.indexOf(START_MARKER);
     const end = contents.indexOf(END_MARKER);
     const block = buildTrainingBlock();

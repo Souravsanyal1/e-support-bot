@@ -36,7 +36,7 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
   const mem = process.memoryUsage();
 
   const report = [
-    `*📊 Elite Force AI — System Telemetry*`,
+    `*📊 Celia — System Telemetry*`,
     '',
     `*Runtime Status:*`,
     `• *Uptime:* ${uptime}`,
@@ -65,7 +65,7 @@ export async function handleAdminReload(ctx: Context): Promise<void> {
   logger.info('Admin triggered system reload');
 
   const message = [
-    `*🔄 Elite Force AI — Reload Complete*`,
+    `*🔄 Celia — Reload Complete*`,
     '',
     `• *User conversation memory:* Disabled`,
     `• *Knowledge base & system prompt:* Re-read for the next response`,
@@ -83,7 +83,7 @@ export async function handleAdminReload(ctx: Context): Promise<void> {
  */
 export async function handleAdminUsers(ctx: Context): Promise<void> {
   const report = [
-    `*👥 Elite Force AI — Privacy Status*`,
+    `*👥 Celia — Privacy Status*`,
     '',
     `• User messages are not saved as training data.`,
     `• Chat history and regular users' raw Telegram IDs are not stored.`,

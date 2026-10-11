@@ -1,4 +1,4 @@
-# 🛡️ Elite Force AI — Telegram Community Support Bot
+# 🛡️ Celia — Telegram Community Support Bot
 
 An enterprise-grade, production-ready Telegram AI Support Bot built for the **Elite Force** ecosystem. Powered by **Google Gemini** using the official `@google/genai` SDK and the modern **grammY** TypeScript framework.
 
@@ -48,7 +48,7 @@ Designed with a free-tier-first architecture, privacy by design, zero long-term 
 1. Open Telegram and search for [@BotFather](https://t.me/BotFather).
 2. Send the `/newbot` command.
 3. Follow the prompts:
-   * Enter the bot display name: `Elite Force AI`
+   * Enter the bot display name: `Celia`
    * Enter the bot username: `Elite_Force_Support_Bot` (or your chosen available username ending with `bot`).
 4. @BotFather will generate your **HTTP API Token** (format: `123456789:ABCdefGHIjkl...`).
 5. Keep this token strictly confidential.

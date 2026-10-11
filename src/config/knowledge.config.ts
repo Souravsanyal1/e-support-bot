@@ -13,7 +13,7 @@ export interface KnowledgeItem {
 
 export const ELITE_FORCE_KNOWLEDGE = {
   ecosystemName: 'Elite Force',
-  assistantName: 'Elite Force AI',
+  assistantName: "I'm Celia, your System & Group Management Admin.",
   description:
     'Elite Force is an innovative decentralized digital ecosystem and community designed to empower ' +
     'members through blockchain utility, Web3 innovations, and community-driven growth.',

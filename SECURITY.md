@@ -1,6 +1,6 @@
 # Security Policy
 
-This security policy outlines the standards and procedures for maintaining security in the Elite Force AI Community Support Bot.
+This security policy outlines the standards and procedures for maintaining security in Celia, your System & Group Management Admin bot.
 
 ## Core Security Commitments
 
