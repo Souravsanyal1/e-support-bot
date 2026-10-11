@@ -16,12 +16,38 @@ import {
 } from '../ai/officialChannelKnowledge';
 import { checkMessageLanguage } from '../utils/languageDetector';
 
+const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
+const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
+
+function isAdminListQuery(text: string): boolean {
+  return ADMIN_LIST_QUERY.test(text) && /\b(who|list|names?|new|added|show|tell|channel|group)\b/i.test(text);
+}
+
+async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
+  try {
+    const admins = await ctx.api.getChatAdministrators(OFFICIAL_CHANNEL_ID);
+    const humanAdmins = admins
+      .filter((admin) => !admin.user.is_bot)
+      .map((admin) => {
+        const name = [admin.user.first_name, admin.user.last_name].filter(Boolean).join(' ').trim();
+        return admin.user.username ? `${name || 'Admin'} (@${admin.user.username})` : name || 'Admin';
+      });
+    const uniqueAdmins = [...new Set(humanAdmins)];
+
+    return uniqueAdmins.length
+      ? `Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):\n${uniqueAdmins.map((name) => `• ${name}`).join('\n')}\n\nThis list excludes bots and reflects administrators currently listed by Telegram.`
+      : 'Telegram currently returned no human administrators for the official channel.';
+  } catch {
+    return `I can't retrieve the official channel's administrator list right now. Please check directly at https://t.me/Elite_Force_Official; I won't guess or identify any bot as an admin.`;
+  }
+}
+
 /**
  * Handles the /start command.
  */
 export async function handleStartCommand(ctx: Context): Promise<void> {
   const message = [
-    `*Welcome to ${BOT_CONFIG.name}* 👋`,
+    `*${BOT_CONFIG.introduction}* 👋`,
     `Ask me about Elite Force, E-FORCE, and official updates.`,
     `No sign-up is needed; chat history is not saved.`,
     '',
@@ -102,6 +128,11 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
       ctx,
       `Please provide a question after the command, for example:\n\`/ask What is Elite Force?\`\n\nOr you can simply send your question directly!`
     );
+    return;
+  }
+
+  if (isAdminListQuery(query)) {
+    await safeReply(ctx, await getOfficialChannelAdmins(ctx));
     return;
   }
 
@@ -216,6 +247,11 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 
   const queryToProcess = cleanedText || text;
 
+  if (isAdminListQuery(queryToProcess)) {
+    await safeReply(ctx, await getOfficialChannelAdmins(ctx), { replyToMessage: true });
+    return;
+  }
+
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(queryToProcess);
   if (!langCheck.isEnglish) {
@@ -271,9 +307,9 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
   if (isBotAdded) {
     const username = ctx.me?.username || 'Elite_Force_Support_Bot';
     const welcome = [
-      `👋 *Hello everyone! I am ${BOT_CONFIG.name}.*`,
+      `👋 *${BOT_CONFIG.introduction}*`,
       '',
-      `I am the official AI community support assistant for the *Elite Force* ecosystem.`,
+      `I’m here to help manage the group and answer questions about the *Elite Force* ecosystem.`,
       '',
       `*How to interact with me in this group:*`,
       `• Tag me: @${username} <your question>`,

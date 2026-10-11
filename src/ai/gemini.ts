@@ -102,7 +102,7 @@ function getEmergencyKnowledgeResponse(
     query.includes('hey') ||
     query.includes('start')
   ) {
-    return `Hey! 👋 I'm Elite Force AI. I'm here to assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, and community updates. How can I help you today?`;
+    return `Hey! 👋 I'm Celia, your System & Group Management Admin. I'm here to assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, and community updates. How can I help you today?`;
   }
 
   return (
@@ -265,7 +265,7 @@ export async function generateSupportResponse(
 ): Promise<string> {
   const sanitizedPrompt = userMessage.trim();
   if (!sanitizedPrompt) {
-    return "Hey! 👋 I'm Elite Force AI. How can I help you today?";
+    return "Hey! 👋 I'm Celia, your System & Group Management Admin. How can I help you today?";
   }
 
   // User messages are used only for this response; no conversation history is

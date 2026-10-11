@@ -1,7 +1,8 @@
 import { BotCommand } from 'grammy/types';
 
 export const BOT_CONFIG = {
-  name: 'Elite Force AI',
+  name: 'Celia',
+  introduction: "I'm Celia, your System & Group Management Admin.",
   username: '@Elite_Force_Support_Bot',
   tagline: 'Official AI Community Support Assistant for Elite Force',
   version: '1.0.0',
