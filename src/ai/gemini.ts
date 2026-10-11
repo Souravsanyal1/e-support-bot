@@ -139,7 +139,7 @@ async function callOpenRouter(
     headers: {
       Authorization: `Bearer ${env.openrouterApiKey}`,
       'HTTP-Referer': 'https://t.me/Elite_Force_Support_Bot',
-      'X-Title': 'Elite Force AI',
+      'X-Title': "I'm Celia, your System & Group Management Admin.",
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({

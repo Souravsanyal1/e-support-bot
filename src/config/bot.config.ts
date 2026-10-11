@@ -7,7 +7,7 @@ export const BOT_CONFIG = {
   tagline: 'Official AI Community Support Assistant for Elite Force',
   version: '1.0.0',
   description:
-    'Elite Force AI is an intelligent community assistant designed to guide members, ' +
+    "I'm Celia, your System & Group Management Admin. I help guide community members, " +
     'explain the Elite Force ecosystem, answer questions, and direct users to official verified information.',
 } as const;
 
@@ -24,7 +24,7 @@ export const LOADING_STICKER_FILE_ID =
 export const PUBLIC_COMMANDS: readonly BotCommand[] = [
   {
     command: 'start',
-    description: 'Start conversation and overview of Elite Force AI',
+    description: 'Start conversation with Celia',
   },
   {
     command: 'help',
@@ -32,7 +32,7 @@ export const PUBLIC_COMMANDS: readonly BotCommand[] = [
   },
   {
     command: 'about',
-    description: 'Learn about Elite Force AI, security, and official sources',
+    description: 'Learn about Celia, security, and official sources',
   },
   {
     command: 'ask',
