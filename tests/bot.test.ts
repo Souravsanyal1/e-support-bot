@@ -291,6 +291,109 @@ async function runTests() {
   assert.strictEqual(askEnNextCalled, true, 'Middleware MUST call next() for English /ask command');
   console.log('✓ Language filter middleware passed (silently deletes non-English, passes English)');
 
+  // Test 11: English Bad Words & Profanity Detector
+  console.log('Testing English Bad Words & Profanity Detector...');
+  const { checkBadWords } = await import('../src/utils/badWordsDetector');
+
+  // 11a. Explicit profanities
+  assert.strictEqual(checkBadWords('fuck').hasBadWords, true, 'Must detect exact fuck');
+  assert.strictEqual(checkBadWords('This is fucking crazy').hasBadWords, true, 'Must detect fucking');
+  assert.strictEqual(checkBadWords('you are a bitch').hasBadWords, true, 'Must detect bitch');
+  assert.strictEqual(checkBadWords('shut up asshole').hasBadWords, true, 'Must detect asshole');
+  assert.strictEqual(checkBadWords('what a bastard').hasBadWords, true, 'Must detect bastard');
+  assert.strictEqual(checkBadWords('stfu').hasBadWords, true, 'Must detect stfu');
+
+  // 11b. Multi-word abusive phrases
+  assert.strictEqual(checkBadWords('fuck you').hasBadWords, true, 'Must detect fuck you');
+  assert.strictEqual(checkBadWords('son of a bitch').hasBadWords, true, 'Must detect son of a bitch');
+  assert.strictEqual(checkBadWords('shut the fuck up').hasBadWords, true, 'Must detect shut the fuck up');
+  assert.strictEqual(checkBadWords('go to hell').hasBadWords, true, 'Must detect go to hell');
+
+  // 11c. Leetspeak and obfuscated forms
+  assert.strictEqual(checkBadWords('f*ck').hasBadWords, true, 'Must detect f*ck');
+  assert.strictEqual(checkBadWords('f**k this').hasBadWords, true, 'Must detect f**k');
+  assert.strictEqual(checkBadWords('b!tch').hasBadWords, true, 'Must detect b!tch');
+  assert.strictEqual(checkBadWords('sh!t').hasBadWords, true, 'Must detect sh!t');
+  assert.strictEqual(checkBadWords('a$$hole').hasBadWords, true, 'Must detect a$$hole');
+  assert.strictEqual(checkBadWords('fuuuuck').hasBadWords, true, 'Must detect repeated characters fuuuuck');
+  assert.strictEqual(checkBadWords('f u c k').hasBadWords, true, 'Must detect spaced letters f u c k');
+
+  // 11d. Clean text & false positive safeguards
+  assert.strictEqual(checkBadWords('What is Elite Force?').hasBadWords, false, 'Must not flag normal question');
+  assert.strictEqual(checkBadWords('I need an assistant to help me').hasBadWords, false, 'Must not flag "assistant"');
+  assert.strictEqual(checkBadWords('What digital assets does it support?').hasBadWords, false, 'Must not flag "asset"');
+  assert.strictEqual(checkBadWords('Please enter your password').hasBadWords, false, 'Must not flag "password"');
+  assert.strictEqual(checkBadWords('This is a classic project').hasBadWords, false, 'Must not flag "classic"');
+  assert.strictEqual(checkBadWords('Hello everyone!').hasBadWords, false, 'Must not flag "hello"');
+  console.log('✓ English bad words & profanity detector passed (clean, obfuscations, and false positive checks verified)');
+
+  // Test 12: Bad Words Filter Middleware
+  console.log('Testing Bad Words Filter Middleware...');
+  const { badWordsFilterMiddleware } = await import('../src/middleware/badWordsFilter');
+
+  let badWordMsgDeleted = false;
+  let badWordNextCalled = false;
+
+  const mockBadWordCtx = {
+    message: { text: 'fuck you all', message_id: 201 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      badWordMsgDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await badWordsFilterMiddleware(mockBadWordCtx, async () => {
+    badWordNextCalled = true;
+  });
+
+  assert.strictEqual(badWordMsgDeleted, true, 'Middleware must delete message with bad words');
+  assert.strictEqual(badWordNextCalled, false, 'Middleware must NOT call next() for message with bad words');
+
+  // Test /ask command with bad words
+  let askBadDeleted = false;
+  let askBadNextCalled = false;
+
+  const mockAskBadCtx = {
+    message: { text: '/ask why are you such an asshole?', message_id: 202 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      askBadDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await badWordsFilterMiddleware(mockAskBadCtx, async () => {
+    askBadNextCalled = true;
+  });
+
+  assert.strictEqual(askBadDeleted, true, 'Middleware must delete /ask command with bad words');
+  assert.strictEqual(askBadNextCalled, false, 'Middleware must NOT call next() for /ask with bad words');
+
+  // Test clean message passes through
+  let cleanDeleted = false;
+  let cleanNextCalled = false;
+
+  const mockCleanCtx = {
+    message: { text: 'How do I buy E-FORCE tokens?', message_id: 203 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      cleanDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await badWordsFilterMiddleware(mockCleanCtx, async () => {
+    cleanNextCalled = true;
+  });
+
+  assert.strictEqual(cleanDeleted, false, 'Middleware must NOT delete clean message');
+  assert.strictEqual(cleanNextCalled, true, 'Middleware must call next() for clean message');
+  console.log('✓ Bad words filter middleware passed (deletes abusive English messages, passes clean)');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();
