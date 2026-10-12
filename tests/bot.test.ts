@@ -201,7 +201,37 @@ async function runTests() {
 
   const english6 = checkMessageLanguage('gm guys');
   assert.strictEqual(english6.isEnglish, true, 'English crypto slang must pass');
-  console.log('✓ Language detector passed (Bangla, Banglish, Foreign, English all verified)');
+
+  // 9e. Non-English Content Removal & Extraction Pipeline
+  const { processAndFilterMessageLanguage } = await import('../src/utils/languageDetector');
+
+  // Mixed message: English question with Banglish words appended
+  const mixed1 = processAndFilterMessageLanguage('When will the token launch kobe hobe bhai?');
+  assert.strictEqual(mixed1.hasEnglish, true, 'Must detect remaining English text');
+  assert.strictEqual(mixed1.hasNonEnglish, true, 'Must detect presence of non-English content');
+  assert(mixed1.cleanedEnglishText.includes('When will the token launch'), 'Must preserve English question');
+  assert(!mixed1.cleanedEnglishText.includes('kobe'), 'Must strip Banglish "kobe"');
+  assert(!mixed1.cleanedEnglishText.includes('hobe'), 'Must strip Banglish "hobe"');
+  assert(!mixed1.cleanedEnglishText.includes('bhai'), 'Must strip Banglish "bhai"');
+
+  // Mixed message: English question with Bengali script appended
+  const mixed2 = processAndFilterMessageLanguage('What is Elite Force? ঠিকানা দিন');
+  assert.strictEqual(mixed2.hasEnglish, true, 'Must detect remaining English text');
+  assert.strictEqual(mixed2.hasNonEnglish, true, 'Must detect non-Latin script');
+  assert.strictEqual(mixed2.cleanedEnglishText, 'What is Elite Force?', 'Must cleanly strip Bengali Unicode script');
+
+  // Pure non-English message
+  const pureNonEn = processAndFilterMessageLanguage('kobe launch hobe vai');
+  assert.strictEqual(pureNonEn.hasEnglish, false, 'Must identify pure non-English without viable English text');
+  assert.strictEqual(pureNonEn.hasNonEnglish, true, 'Must flag as non-English');
+
+  // Clean English message
+  const pureEn = processAndFilterMessageLanguage('How do I buy E-FORCE tokens on BSC?');
+  assert.strictEqual(pureEn.hasEnglish, true, 'Clean English must pass');
+  assert.strictEqual(pureEn.hasNonEnglish, false, 'Clean English must have no non-English content');
+  assert.strictEqual(pureEn.cleanedEnglishText, 'How do I buy E-FORCE tokens on BSC?', 'Must preserve text untouched');
+
+  console.log('✓ Language detector & non-English removal pipeline passed');
 
   // Test 10: Language Filter Middleware
   console.log('Testing Language Filter Middleware...');
@@ -218,6 +248,7 @@ async function runTests() {
       deletedMessage = true;
       return true;
     },
+    reply: async () => true,
   } as unknown as Context;
 
   await languageFilterMiddleware(mockNonEnglishCtx, async () => {
@@ -248,25 +279,43 @@ async function runTests() {
   assert.strictEqual(enDeleted, false, 'Middleware must NOT delete English message');
   assert.strictEqual(enNextCalled, true, 'Middleware MUST call next() for English message');
 
+  // Test Mixed Message through middleware (Non-English stripped, English proceeds)
+  let mixedNextCalled = false;
+  const mockMixedCtx = {
+    message: { text: 'Tell me about the project kobe launch hobe bhai', message_id: 103 },
+    chat: { id: 12345 },
+    from: { id: 54321 },
+    deleteMessage: async () => true,
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockMixedCtx, async () => {
+    mixedNextCalled = true;
+  });
+
+  assert.strictEqual(mixedNextCalled, true, 'Middleware must call next() for mixed message after removing non-English');
+  assert(mockMixedCtx.message?.text?.includes('Tell me about the project'), 'Must preserve English portion');
+  assert(!mockMixedCtx.message?.text?.includes('kobe'), 'Must remove Banglish portion from message text');
+
   // Test /ask command in Banglish through middleware
   let askDeleted = false;
   let askNextCalled = false;
 
   const mockAskBanglishCtx = {
-    message: { text: '/ask kemon acho vai', message_id: 103 },
+    message: { text: '/ask kemon acho vai', message_id: 104 },
     chat: { id: 12345 },
     from: { id: 54321 },
     deleteMessage: async () => {
       askDeleted = true;
       return true;
     },
+    reply: async () => true,
   } as unknown as Context;
 
   await languageFilterMiddleware(mockAskBanglishCtx, async () => {
     askNextCalled = true;
   });
 
-  assert.strictEqual(askDeleted, true, 'Middleware must delete Banglish /ask command');
+  assert.strictEqual(askDeleted, true, 'Middleware must delete pure Banglish /ask command');
   assert.strictEqual(askNextCalled, false, 'Middleware must NOT call next() for Banglish /ask (no reply)');
 
   // Test /ask command in English through middleware
@@ -274,7 +323,7 @@ async function runTests() {
   let askEnNextCalled = false;
 
   const mockAskEnCtx = {
-    message: { text: '/ask What is Elite Force?', message_id: 104 },
+    message: { text: '/ask What is Elite Force?', message_id: 105 },
     chat: { id: 12345 },
     from: { id: 54321 },
     deleteMessage: async () => {
@@ -289,7 +338,7 @@ async function runTests() {
 
   assert.strictEqual(askEnDeleted, false, 'Middleware must NOT delete English /ask command');
   assert.strictEqual(askEnNextCalled, true, 'Middleware MUST call next() for English /ask command');
-  console.log('✓ Language filter middleware passed (silently deletes non-English, passes English)');
+  console.log('✓ Language filter middleware passed (silently deletes non-English, strips mixed, passes English)');
 
   // Test 11: English Bad Words & Profanity Detector
   console.log('Testing English Bad Words & Profanity Detector...');

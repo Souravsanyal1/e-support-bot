@@ -341,3 +341,161 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
 
   return { isEnglish: true, language: 'english' };
 }
+
+export interface ProcessedLanguageResult {
+  originalText: string;
+  cleanedEnglishText: string;
+  hasEnglish: boolean;
+  hasNonEnglish: boolean;
+  detectedNonEnglishLanguages: string[];
+  removedContent: string[];
+}
+
+/**
+ * Normalizes and removes non-English words, phrases, and non-Latin scripts
+ * while preserving English text, URLs, numbers, mentions, and symbols.
+ *
+ * Processing Flow:
+ * 1. Detect language
+ * 2. Remove non-English content
+ * 3. Process remaining English text
+ * 4. Determine if meaningful English content remains
+ */
+export function processAndFilterMessageLanguage(rawText: string): ProcessedLanguageResult {
+  const originalText = rawText.trim();
+  if (!originalText) {
+    return {
+      originalText,
+      cleanedEnglishText: '',
+      hasEnglish: false,
+      hasNonEnglish: false,
+      detectedNonEnglishLanguages: [],
+      removedContent: [],
+    };
+  }
+
+  const removedContent: string[] = [];
+  const detectedNonEnglishLanguages = new Set<string>();
+
+  let workingText = originalText;
+
+  // 1. Remove non-Latin scripts (Bangla, Arabic, Hindi, Cyrillic, CJK, etc.)
+  if (BANGLA_SCRIPT_REGEX.test(workingText)) {
+    detectedNonEnglishLanguages.add('Bangla');
+    const matches = workingText.match(/[\u0980-\u09FF]+/g) || [];
+    for (const m of matches) removedContent.push(m);
+    workingText = workingText.replace(/[\u0980-\u09FF]+/g, ' ');
+  }
+
+  if (OTHER_NON_LATIN_SCRIPT_REGEX.test(workingText)) {
+    detectedNonEnglishLanguages.add('Non-Latin Script');
+    const matches = workingText.match(new RegExp(OTHER_NON_LATIN_SCRIPT_REGEX.source, 'g')) || [];
+    for (const m of matches) removedContent.push(m);
+    workingText = workingText.replace(new RegExp(OTHER_NON_LATIN_SCRIPT_REGEX.source, 'g'), ' ');
+  }
+
+  // 2. Remove multi-word Banglish phrases
+  for (const phrase of BANGLISH_PHRASES) {
+    const regex = new RegExp(`\\b${phrase}\\b`, 'gi');
+    if (regex.test(workingText)) {
+      detectedNonEnglishLanguages.add('Banglish');
+      removedContent.push(phrase);
+      workingText = workingText.replace(regex, ' ');
+    }
+  }
+
+  // 3. Tokenize by words and analyze Latin non-English words
+  // Preserve URLs, contract addresses, @mentions by temporarily tokenizing around whitespace
+  const rawTokens = workingText.split(/\s+/);
+  const preservedTokens: string[] = [];
+
+  for (const token of rawTokens) {
+    if (!token) continue;
+
+    // Preserve URLs, Telegram links, mentions, numbers, contract addresses
+    if (
+      /^https?:\/\//i.test(token) ||
+      /^t\.me\//i.test(token) ||
+      /^0x[a-f0-9]{40}$/i.test(token) ||
+      /^@\w+/i.test(token) ||
+      /^[0-9$€£¥%+\-/*=.,#:]+$/.test(token)
+    ) {
+      preservedTokens.push(token);
+      continue;
+    }
+
+    // Clean word for dictionary checking
+    const cleanWord = token.toLowerCase().replace(/[^a-z]/g, '');
+    if (!cleanWord) {
+      preservedTokens.push(token);
+      continue;
+    }
+
+    // Check if word is known Banglish
+    if (BANGLISH_WORDS.has(cleanWord)) {
+      detectedNonEnglishLanguages.add('Banglish');
+      removedContent.push(token);
+      continue;
+    }
+
+    // Check if word has Banglish suffix on non-English base
+    let hasBanglishSuffix = false;
+    if (!COMMON_ENGLISH_WORDS.has(cleanWord)) {
+      for (const pattern of BANGLISH_SUFFIX_PATTERNS) {
+        if (pattern.test(cleanWord)) {
+          hasBanglishSuffix = true;
+          break;
+        }
+      }
+    }
+    if (hasBanglishSuffix) {
+      detectedNonEnglishLanguages.add('Banglish');
+      removedContent.push(token);
+      continue;
+    }
+
+    // Check if word is foreign Latin (Hindi/Spanish/French/etc.)
+    if (OTHER_FOREIGN_WORDS.has(cleanWord)) {
+      detectedNonEnglishLanguages.add('Foreign (Non-English)');
+      removedContent.push(token);
+      continue;
+    }
+
+    // English word or unrecognized word -> preserve
+    preservedTokens.push(token);
+  }
+
+  // 4. Reconstruct cleaned English text
+  let cleanedEnglishText = preservedTokens
+    .join(' ')
+    .replace(/\s+([.,!?;:])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  // 5. Evaluate remaining English viability
+  // Check remaining alphabetic words against English vocabulary
+  const remainingWords = cleanedEnglishText.toLowerCase().match(/[a-z]+/g) || [];
+  let recognizedEnglishCount = 0;
+
+  for (const word of remainingWords) {
+    if (COMMON_ENGLISH_WORDS.has(word)) {
+      recognizedEnglishCount++;
+    }
+  }
+
+  // If there are words left, check whether recognized English words exist
+  const hasEnglish =
+    remainingWords.length > 0 &&
+    (recognizedEnglishCount >= 1 || cleanedEnglishText.includes('http') || cleanedEnglishText.includes('0x'));
+
+  const hasNonEnglish = removedContent.length > 0;
+
+  return {
+    originalText,
+    cleanedEnglishText,
+    hasEnglish,
+    hasNonEnglish,
+    detectedNonEnglishLanguages: Array.from(detectedNonEnglishLanguages),
+    removedContent,
+  };
+}

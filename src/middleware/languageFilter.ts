@@ -1,7 +1,7 @@
 import { Context, NextFunction } from 'grammy';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
-import { checkMessageLanguage } from '../utils/languageDetector';
+import { processAndFilterMessageLanguage } from '../utils/languageDetector';
 
 /**
  * Global Language Moderation Middleware.
@@ -50,10 +50,12 @@ export async function languageFilterMiddleware(
   }
 
   // 5. Determine text to evaluate
-  let textToCheck = trimmed;
   const askMatch = trimmed.match(/^\/ask(@\w+)?(?:\s+(.*))?$/i);
-  if (askMatch) {
-    const query = askMatch[2]?.trim() || '';
+  const isAskCommand = Boolean(askMatch);
+  let textToCheck = trimmed;
+
+  if (isAskCommand) {
+    const query = askMatch?.[2]?.trim() || '';
     if (!query) {
       // Empty /ask command -> pass through to show usage instructions
       await next();
@@ -62,20 +64,44 @@ export async function languageFilterMiddleware(
     textToCheck = query;
   }
 
-  // 6. Evaluate message language
-  const check = checkMessageLanguage(textToCheck);
+  // 6. Processing Flow:
+  // 1. Detect language -> 2. Remove non-English content -> 3. Process remaining English text -> 4. Respond only in English
+  const processed = processAndFilterMessageLanguage(textToCheck);
 
-  if (!check.isEnglish) {
-    logger.info('Moderating non-English/Bangla/Banglish message (deleting without reply)', {
+  if (processed.hasNonEnglish && processed.hasEnglish) {
+    // Mixed message: Non-English content stripped, remaining English text preserved
+    logger.info('Stripped non-English content from mixed message, preserving remaining English text', {
       chatId: ctx.chat?.id,
       messageId: ctx.msg?.message_id,
       fromUserId: ctx.from?.id,
-      detectedLanguage: check.language,
-      reason: check.reason,
+      removedLanguages: processed.detectedNonEnglishLanguages,
+      removedFragments: processed.removedContent,
+      cleanedEnglishText: processed.cleanedEnglishText,
+    });
+
+    // Update message text in-place with the clean English content
+    const updatedContent = isAskCommand
+      ? `/ask ${processed.cleanedEnglishText}`
+      : processed.cleanedEnglishText;
+
+    if (message.text) message.text = updatedContent;
+    if (message.caption) message.caption = updatedContent;
+
+    await next();
+    return;
+  }
+
+  if (!processed.hasEnglish) {
+    // Purely non-English message: Do not process content; send English-only notification & delete
+    logger.info('Moderating pure non-English message (deleting and suppressing non-English response)', {
+      chatId: ctx.chat?.id,
+      messageId: ctx.msg?.message_id,
+      fromUserId: ctx.from?.id,
+      detectedLanguages: processed.detectedNonEnglishLanguages,
       snippet: textToCheck.slice(0, 60),
     });
 
-    // Delete the incoming message from Telegram
+    // Delete the incoming non-English message from Telegram
     try {
       await ctx.deleteMessage();
     } catch (deleteError) {
@@ -86,10 +112,19 @@ export async function languageFilterMiddleware(
       });
     }
 
-    // Crucial: Do NOT reply, do NOT call next()
+    // If private chat, notify user that only English is supported
+    if (ctx.chat?.type === 'private') {
+      try {
+        await ctx.reply('⚠️ Only English is supported. Please ask your question in English.');
+      } catch {
+        // Silently swallow reply errors
+      }
+    }
+
+    // Crucial: Do NOT answer non-English content, do NOT call next()
     return;
   }
 
-  // Message is valid English -> continue to standard handlers
+  // Pure clean English message -> continue to next handlers
   await next();
 }
