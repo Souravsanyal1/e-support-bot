@@ -295,36 +295,95 @@ async function runTests() {
   console.log('Testing English Bad Words & Profanity Detector...');
   const { checkBadWords } = await import('../src/utils/badWordsDetector');
 
-  // 11a. Explicit profanities
-  assert.strictEqual(checkBadWords('fuck').hasBadWords, true, 'Must detect exact fuck');
+  // 11a. Explicit profanities (case-insensitivity & variants)
+  assert.strictEqual(checkBadWords('FUCK').hasBadWords, true, 'Must detect uppercase FUCK');
+  assert.strictEqual(checkBadWords('Fuck').hasBadWords, true, 'Must detect capitalized Fuck');
+  assert.strictEqual(checkBadWords('fUuCk').hasBadWords, true, 'Must detect mixed-case fUuCk');
   assert.strictEqual(checkBadWords('This is fucking crazy').hasBadWords, true, 'Must detect fucking');
   assert.strictEqual(checkBadWords('you are a bitch').hasBadWords, true, 'Must detect bitch');
   assert.strictEqual(checkBadWords('shut up asshole').hasBadWords, true, 'Must detect asshole');
   assert.strictEqual(checkBadWords('what a bastard').hasBadWords, true, 'Must detect bastard');
+  assert.strictEqual(checkBadWords('crap token').hasBadWords, true, 'Must detect crap');
   assert.strictEqual(checkBadWords('stfu').hasBadWords, true, 'Must detect stfu');
 
-  // 11b. Multi-word abusive phrases
+  // 11b. Multi-word abusive phrases & insults
   assert.strictEqual(checkBadWords('fuck you').hasBadWords, true, 'Must detect fuck you');
+  assert.strictEqual(checkBadWords('fuck off').hasBadWords, true, 'Must detect fuck off');
+  assert.strictEqual(checkBadWords('fucking idiot').hasBadWords, true, 'Must detect fucking idiot');
+  assert.strictEqual(checkBadWords('you idiot').hasBadWords, true, 'Must detect you idiot');
+  assert.strictEqual(checkBadWords('stupid asshole').hasBadWords, true, 'Must detect stupid asshole');
+  assert.strictEqual(checkBadWords('piece of shit').hasBadWords, true, 'Must detect piece of shit');
   assert.strictEqual(checkBadWords('son of a bitch').hasBadWords, true, 'Must detect son of a bitch');
   assert.strictEqual(checkBadWords('shut the fuck up').hasBadWords, true, 'Must detect shut the fuck up');
   assert.strictEqual(checkBadWords('go to hell').hasBadWords, true, 'Must detect go to hell');
 
-  // 11c. Leetspeak and obfuscated forms
-  assert.strictEqual(checkBadWords('f*ck').hasBadWords, true, 'Must detect f*ck');
-  assert.strictEqual(checkBadWords('f**k this').hasBadWords, true, 'Must detect f**k');
-  assert.strictEqual(checkBadWords('b!tch').hasBadWords, true, 'Must detect b!tch');
-  assert.strictEqual(checkBadWords('sh!t').hasBadWords, true, 'Must detect sh!t');
-  assert.strictEqual(checkBadWords('a$$hole').hasBadWords, true, 'Must detect a$$hole');
-  assert.strictEqual(checkBadWords('fuuuuck').hasBadWords, true, 'Must detect repeated characters fuuuuck');
-  assert.strictEqual(checkBadWords('f u c k').hasBadWords, true, 'Must detect spaced letters f u c k');
+  // 11c. Sexual / vulgar expressions
+  assert.strictEqual(checkBadWords('blowjob').hasBadWords, true, 'Must detect blowjob');
+  assert.strictEqual(checkBadWords('handjob').hasBadWords, true, 'Must detect handjob');
+  assert.strictEqual(checkBadWords('jerk off').hasBadWords, true, 'Must detect jerk off');
+  assert.strictEqual(checkBadWords('jerking off').hasBadWords, true, 'Must detect jerking off');
+  assert.strictEqual(checkBadWords('dildo').hasBadWords, true, 'Must detect dildo');
+  assert.strictEqual(checkBadWords('cock').hasBadWords, true, 'Must detect cock');
+  assert.strictEqual(checkBadWords('horny').hasBadWords, true, 'Must detect horny');
+  assert.strictEqual(checkBadWords('slut').hasBadWords, true, 'Must detect slut');
+  assert.strictEqual(checkBadWords('whore').hasBadWords, true, 'Must detect whore');
 
-  // 11d. Clean text & false positive safeguards
+  // 11d. Obfuscated / Evasion forms (punctuation, spacing, leetspeak, masking, repeated chars)
+  assert.strictEqual(checkBadWords('f*ck').hasBadWords, true, 'Must detect f*ck');
+  assert.strictEqual(checkBadWords('f**k').hasBadWords, true, 'Must detect f**k');
+  assert.strictEqual(checkBadWords('f u c k').hasBadWords, true, 'Must detect f u c k');
+  assert.strictEqual(checkBadWords('f.u.c.k').hasBadWords, true, 'Must detect f.u.c.k');
+  assert.strictEqual(checkBadWords('f-u-c-k').hasBadWords, true, 'Must detect f-u-c-k');
+  assert.strictEqual(checkBadWords('f@ck').hasBadWords, true, 'Must detect f@ck');
+  assert.strictEqual(checkBadWords('f4ck').hasBadWords, true, 'Must detect f4ck');
+  assert.strictEqual(checkBadWords('fuk').hasBadWords, true, 'Must detect fuk');
+  assert.strictEqual(checkBadWords('fucc').hasBadWords, true, 'Must detect fucc');
+  assert.strictEqual(checkBadWords('fuuuck').hasBadWords, true, 'Must detect fuuuck');
+  assert.strictEqual(checkBadWords('fuuuuck').hasBadWords, true, 'Must detect fuuuuck');
+  assert.strictEqual(checkBadWords('fuuuuuck').hasBadWords, true, 'Must detect fuuuuuck');
+
+  assert.strictEqual(checkBadWords('sh!t').hasBadWords, true, 'Must detect sh!t');
+  assert.strictEqual(checkBadWords('sh1t').hasBadWords, true, 'Must detect sh1t');
+  assert.strictEqual(checkBadWords('sh*t').hasBadWords, true, 'Must detect sh*t');
+  assert.strictEqual(checkBadWords('s h i t').hasBadWords, true, 'Must detect s h i t');
+
+  assert.strictEqual(checkBadWords('b!tch').hasBadWords, true, 'Must detect b!tch');
+  assert.strictEqual(checkBadWords('b1tch').hasBadWords, true, 'Must detect b1tch');
+  assert.strictEqual(checkBadWords('b*tch').hasBadWords, true, 'Must detect b*tch');
+  assert.strictEqual(checkBadWords('b i t c h').hasBadWords, true, 'Must detect b i t c h');
+
+  assert.strictEqual(checkBadWords('a$$').hasBadWords, true, 'Must detect a$$');
+  assert.strictEqual(checkBadWords('a$$hole').hasBadWords, true, 'Must detect a$$hole');
+  assert.strictEqual(checkBadWords('@sshole').hasBadWords, true, 'Must detect @sshole');
+  assert.strictEqual(checkBadWords('4sshole').hasBadWords, true, 'Must detect 4sshole');
+
+  assert.strictEqual(checkBadWords('d!ck').hasBadWords, true, 'Must detect d!ck');
+  assert.strictEqual(checkBadWords('d1ck').hasBadWords, true, 'Must detect d1ck');
+  assert.strictEqual(checkBadWords('d*ck').hasBadWords, true, 'Must detect d*ck');
+
+  assert.strictEqual(checkBadWords('p*ssy').hasBadWords, true, 'Must detect p*ssy');
+  assert.strictEqual(checkBadWords('p@ssy').hasBadWords, true, 'Must detect p@ssy');
+  assert.strictEqual(checkBadWords('p1ssy').hasBadWords, true, 'Must detect p1ssy');
+
+  assert.strictEqual(checkBadWords('c*nt').hasBadWords, true, 'Must detect c*nt');
+  assert.strictEqual(checkBadWords('c u n t').hasBadWords, true, 'Must detect c u n t');
+
+  assert.strictEqual(checkBadWords('wh0re').hasBadWords, true, 'Must detect wh0re');
+  assert.strictEqual(checkBadWords('wh*re').hasBadWords, true, 'Must detect wh*re');
+  assert.strictEqual(checkBadWords('sl*t').hasBadWords, true, 'Must detect sl*t');
+
+  // 11e. Clean text, educational context & false positive safeguards
   assert.strictEqual(checkBadWords('What is Elite Force?').hasBadWords, false, 'Must not flag normal question');
   assert.strictEqual(checkBadWords('I need an assistant to help me').hasBadWords, false, 'Must not flag "assistant"');
   assert.strictEqual(checkBadWords('What digital assets does it support?').hasBadWords, false, 'Must not flag "asset"');
   assert.strictEqual(checkBadWords('Please enter your password').hasBadWords, false, 'Must not flag "password"');
   assert.strictEqual(checkBadWords('This is a classic project').hasBadWords, false, 'Must not flag "classic"');
   assert.strictEqual(checkBadWords('Hello everyone!').hasBadWords, false, 'Must not flag "hello"');
+  assert.strictEqual(checkBadWords('What is the title of the whitepaper?').hasBadWords, false, 'Must not flag "title"');
+  assert.strictEqual(checkBadWords('I ordered a drink and a cocktail').hasBadWords, false, 'Must not flag "cocktail"');
+  assert.strictEqual(checkBadWords('The ship has arrived').hasBadWords, false, 'Must not flag "ship"');
+  assert.strictEqual(checkBadWords('How do I report a scammer?').hasBadWords, false, 'Must not flag "scammer"');
+  assert.strictEqual(checkBadWords('what does the word "bitch" mean?').hasBadWords, false, 'Educational inquiry must not flag');
   console.log('✓ English bad words & profanity detector passed (clean, obfuscations, and false positive checks verified)');
 
   // Test 12: Bad Words Filter Middleware
