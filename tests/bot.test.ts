@@ -239,6 +239,8 @@ async function runTests() {
 
   let deletedMessage = false;
   let nextCalled = false;
+  let warningReplied = false;
+  let autoDeleteCalled = false;
 
   const mockNonEnglishCtx = {
     message: { text: 'kobe launch hobe bhai?', message_id: 101 },
@@ -248,7 +250,16 @@ async function runTests() {
       deletedMessage = true;
       return true;
     },
-    reply: async () => true,
+    reply: async () => {
+      warningReplied = true;
+      return { message_id: 888, chat: { id: 12345 } };
+    },
+    api: {
+      deleteMessage: async () => {
+        autoDeleteCalled = true;
+        return true;
+      },
+    },
   } as unknown as Context;
 
   await languageFilterMiddleware(mockNonEnglishCtx, async () => {
@@ -256,6 +267,7 @@ async function runTests() {
   });
 
   assert.strictEqual(deletedMessage, true, 'Middleware must delete non-English/Banglish message');
+  assert.strictEqual(warningReplied, true, 'Middleware must reply with English-only warning notice');
   assert.strictEqual(nextCalled, false, 'Middleware must NOT call next() for non-English message (no reply)');
 
   // Test English message through middleware
@@ -308,7 +320,8 @@ async function runTests() {
       askDeleted = true;
       return true;
     },
-    reply: async () => true,
+    reply: async () => ({ message_id: 889, chat: { id: 12345 } }),
+    api: { deleteMessage: async () => true },
   } as unknown as Context;
 
   await languageFilterMiddleware(mockAskBanglishCtx, async () => {
@@ -338,6 +351,29 @@ async function runTests() {
 
   assert.strictEqual(askEnDeleted, false, 'Middleware must NOT delete English /ask command');
   assert.strictEqual(askEnNextCalled, true, 'Middleware MUST call next() for English /ask command');
+
+  // Test scheduleAutoDelete functionality
+  console.log('Testing Auto-Delete Message Scheduling (2-minute auto-removal)...');
+  const { scheduleAutoDelete } = await import('../src/utils/telegram');
+  let scheduledDeleteExecuted = false;
+
+  const mockTimerCtx = {
+    chat: { id: 777888 },
+    api: {
+      deleteMessage: async (chatId: number, msgId: number) => {
+        if (chatId === 777888 && msgId === 999111) {
+          scheduledDeleteExecuted = true;
+        }
+        return true;
+      },
+    },
+  } as unknown as Context;
+
+  // Test with very short 50ms delay
+  scheduleAutoDelete(mockTimerCtx, 999111, 50);
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  assert.strictEqual(scheduledDeleteExecuted, true, 'scheduleAutoDelete must invoke deleteMessage when timer fires');
+  console.log('✓ Auto-delete message scheduling verified');
   console.log('✓ Language filter middleware passed (silently deletes non-English, strips mixed, passes English)');
 
   // Test 11: English Bad Words & Profanity Detector

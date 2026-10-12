@@ -323,3 +323,39 @@ export async function deleteLoadingSticker(
     });
   }
 }
+
+/**
+ * Schedules a Telegram message to be automatically deleted after a specified duration
+ * (default: 2 minutes = 120,000 ms).
+ */
+export function scheduleAutoDelete(
+  ctx: Context,
+  messageId: number,
+  delayMs: number = 2 * 60 * 1000
+): NodeJS.Timeout | null {
+  const chatId = ctx.chat?.id;
+  if (!chatId || !messageId) return null;
+
+  const timer = setTimeout(async () => {
+    try {
+      await ctx.api.deleteMessage(chatId, messageId);
+      logger.info('Auto-deleted temporary message after timer expired', {
+        chatId,
+        messageId,
+        delayMs,
+      });
+    } catch (err) {
+      logger.debug('Auto-delete message skipped or failed (may already be deleted)', {
+        chatId,
+        messageId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, delayMs);
+
+  if (timer.unref) {
+    timer.unref();
+  }
+
+  return timer;
+}

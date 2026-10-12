@@ -107,7 +107,7 @@ Any non-English language or non-English text must be detected and removed from t
 - Do not respond using the detected non-English language.
 - Do not automatically translate non-English content into English.
 - Do not reproduce removed non-English content in the response.
-- If the entire message is written in a non-English language, do not attempt to answer its content. Respond with a short English message indicating that only English is supported.
+- If the entire message is written in a non-English language, do not attempt to answer its content. Respond with a short English message indicating that only English is supported (this notice is automatically removed after 2 minutes to keep the chat clean).
 - English numbers, punctuation, URLs, usernames, wallet addresses, contract addresses, and standard technical symbols may be preserved.
 - Proper names or brand names should only be preserved when they are necessary for understanding the English message.
 

@@ -2,6 +2,7 @@ import { Context, NextFunction } from 'grammy';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
 import { processAndFilterMessageLanguage } from '../utils/languageDetector';
+import { scheduleAutoDelete } from '../utils/telegram';
 
 /**
  * Global Language Moderation Middleware.
@@ -112,13 +113,16 @@ export async function languageFilterMiddleware(
       });
     }
 
-    // If private chat, notify user that only English is supported
-    if (ctx.chat?.type === 'private') {
-      try {
-        await ctx.reply('⚠️ Only English is supported. Please ask your question in English.');
-      } catch {
-        // Silently swallow reply errors
+    // Notify that only English is supported, and auto-delete this warning after 2 minutes (120,000 ms)
+    try {
+      const warningMsg = await ctx.reply(
+        '⚠️ Only English is supported. Please ask your question in English.'
+      );
+      if (warningMsg?.message_id) {
+        scheduleAutoDelete(ctx, warningMsg.message_id, 2 * 60 * 1000);
       }
+    } catch {
+      // Silently swallow reply errors
     }
 
     // Crucial: Do NOT answer non-English content, do NOT call next()
