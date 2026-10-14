@@ -873,6 +873,117 @@ async function runTests() {
 
   console.log('✓ User handlers & vision image analysis integration verified');
 
+  // Test 18: Verified Official Channel Administrators & Privacy Guardrails
+  console.log('Testing Verified Official Channel Administrators & Privacy Guardrails...');
+  const {
+    isAdminListQuery,
+    getOfficialChannelAdmins,
+    VERIFIED_OFFICIAL_ADMINS_TEXT,
+    VERIFIED_OFFICIAL_ADMINS,
+  } = await import('../src/handlers/userHandler');
+
+  assert.strictEqual(isAdminListQuery('who are the admins'), true, 'Should detect admin query');
+  assert.strictEqual(isAdminListQuery('channel administrators'), true, 'Should detect channel admin query');
+  assert.strictEqual(isAdminListQuery('admin'), true, 'Should detect standalone admin query');
+  assert.strictEqual(isAdminListQuery('what is elite force'), false, 'Should not match unrelated queries');
+
+  const mockChannelAdminCtx = {
+    api: {
+      getChatAdministrators: async () => {
+        throw new Error('Telegram API restricted');
+      },
+    },
+  } as unknown as Context;
+
+  const adminResponse = await getOfficialChannelAdmins(mockChannelAdminCtx);
+  assert(adminResponse.includes('Elite Force | Support (@EliteForceSupportTeam)'), 'Must include official support admin');
+  assert(adminResponse.includes('𝓓𝓮𝓕𝓲 𝓖𝓮𝓷𝓮𝓻𝓪𝓽𝓸𝓻 (@cripto_currency_bro)'), 'Must include verified DeFi Generator admin');
+  assert(adminResponse.includes('excludes bots'), 'Must mention excluding bots');
+  assert(!adminResponse.includes('Owner ID:'), 'Strict rule: Must NOT expose Owner ID');
+  assert(!adminResponse.includes('123456789'), 'Strict rule: Must NOT expose numeric Telegram ID');
+  console.log('✓ Verified official channel administrators & privacy guardrails passed');
+
+  // Test 19: Non-Repetitive Introduction Guardrail
+  console.log('Testing Non-Repetitive Introduction Guardrail...');
+  // buildSystemPrompt is already imported at the top of this test suite
+  const currentPrompt = buildSystemPrompt();
+  assert(currentPrompt.includes('DO NOT REPEAT YOUR INTRODUCTION'), 'Prompt must instruct against repeating introduction');
+  assert(currentPrompt.includes('DO NOT start regular replies with "I\'m Celia, your System & Group Management Admin."'), 'Must ban generic intro in regular replies');
+
+  const { generateSupportResponse } = await import('../src/ai/gemini');
+  // Test emergency static response for casual greeting vs identity query
+  const greetingResponse = await generateSupportResponse('hello');
+  assert(!greetingResponse.startsWith("I'm Celia, your System & Group Management Admin."), 'Greetings must NOT start with repetitive Celia intro');
+
+  const identityResponse = await generateSupportResponse('who are you?');
+  assert(identityResponse.includes("I'm Celia, your System & Group Management Admin."), 'Explicit identity query must identify as Celia');
+  console.log('✓ Non-repetitive introduction guardrail passed');
+
+  // Test 20: Vision Safety Moderation & Inappropriate / Nude Content Filtering
+  console.log('Testing Vision Safety Moderation & Inappropriate / Nude Content Filtering...');
+  const { buildVisionSystemPrompt, INAPPROPRIATE_CONTENT_TAG } = await import('../src/ai/vision');
+  const visionPrompt = buildVisionSystemPrompt();
+  assert(visionPrompt.includes(INAPPROPRIATE_CONTENT_TAG), 'Vision prompt must include inappropriate content tag');
+  assert(visionPrompt.includes('Nudity, naked individuals'), 'Vision prompt must specify nudity detection');
+  assert(visionPrompt.includes('CRITICAL CONVERSATIONAL RULE: DO NOT start your response with "I\'m Celia'), 'Vision prompt must prevent repetitive intro');
+
+  // Test group moderation of inappropriate photo: must delete message and not reply
+  let inappropriateDeleted = false;
+  let inappropriateReplied = false;
+  const mockBadPhotoCtx = {
+    chat: { id: -100123456789, type: 'group' },
+    from: { id: 123456 },
+    message: {
+      message_id: 8881,
+      photo: [{ file_id: 'bad_photo_id', file_size: 20000 }],
+      caption: 'Look at this photo',
+    },
+    api: {
+      getFile: async () => ({ file_path: 'photos/bad.jpg' }),
+    },
+    deleteMessage: async () => {
+      inappropriateDeleted = true;
+      return true;
+    },
+    reply: async () => {
+      inappropriateReplied = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  // Mock global fetch for Telegram file download to return fake image buffer
+  const originalFetch = global.fetch;
+  global.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const urlStr = String(input);
+    if (urlStr.includes('api.telegram.org/file/bot')) {
+      return {
+        ok: true,
+        status: 200,
+        arrayBuffer: async () => Buffer.from('fake-image-bytes'),
+      } as unknown as Response;
+    }
+    // Return inappropriate content tag from simulated AI call
+    if (urlStr.includes('openrouter.ai')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          choices: [{ message: { content: INAPPROPRIATE_CONTENT_TAG } }],
+        }),
+      } as unknown as Response;
+    }
+    return originalFetch(input, init);
+  };
+
+  try {
+    await handlePhotoMessage(mockBadPhotoCtx);
+    assert.strictEqual(inappropriateDeleted, true, 'Inappropriate/nude photo in group must be deleted');
+    assert.strictEqual(inappropriateReplied, false, 'Inappropriate photo must NOT receive a reply');
+  } finally {
+    global.fetch = originalFetch;
+  }
+  console.log('✓ Vision safety moderation & inappropriate / nude image filtering passed');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();

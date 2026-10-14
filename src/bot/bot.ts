@@ -88,6 +88,13 @@ export function createBot(): Bot {
 
   // 6. User Photo & Image Analysis
   bot.on('message:photo', handlePhotoMessage);
+  bot.on('message:document', async (ctx, next) => {
+    if (ctx.message?.document?.mime_type?.startsWith('image/')) {
+      await handlePhotoMessage(ctx);
+    } else {
+      await next();
+    }
+  });
 
   // 7. Community Group Member Updates (Welcome message when bot joins)
   bot.on('message:new_chat_members', handleNewChatMembers);

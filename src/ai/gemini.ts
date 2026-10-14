@@ -66,11 +66,23 @@ function getEmergencyKnowledgeResponse(
   }
 
   if (
+    query.includes('admin') ||
+    query.includes('administrator') ||
+    query.includes('moderator')
+  ) {
+    return (
+      `Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):\n` +
+      `• Elite Force | Support (@EliteForceSupportTeam)\n` +
+      `• 𝓓𝓮𝓕𝓲 𝓖𝓮𝓷𝓮𝓻𝓪𝓽𝓸𝓻 (@cripto_currency_bro)\n\n` +
+      `This list excludes bots and reflects administrators currently listed by Telegram.`
+    );
+  }
+
+  if (
     query.includes('founder') ||
     query.includes('ceo') ||
     query.includes('creator') ||
     query.includes('dev') ||
-    query.includes('admin') ||
     query.includes('team')
   ) {
     return (
@@ -97,12 +109,22 @@ function getEmergencyKnowledgeResponse(
   }
 
   if (
+    query.includes('who are you') ||
+    query.includes('what is your name') ||
+    query.includes('who is celia') ||
+    query.includes('your identity') ||
+    query.includes('who is bot')
+  ) {
+    return `I'm Celia, your System & Group Management Admin. I'm here to assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, and community updates! 🧡`;
+  }
+
+  if (
     query.includes('hi') ||
     query.includes('hello') ||
     query.includes('hey') ||
     query.includes('start')
   ) {
-    return `Hey! 👋 I'm Celia, your System & Group Management Admin. I'm here to assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, and community updates. How can I help you today?`;
+    return `Hey! 👋 How can I assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, or community updates today? 🧡`;
   }
 
   return (

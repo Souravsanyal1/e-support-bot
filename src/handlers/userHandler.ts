@@ -24,11 +24,26 @@ import { checkBadWords } from '../utils/badWordsDetector';
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 
-function isAdminListQuery(text: string): boolean {
-  return ADMIN_LIST_QUERY.test(text) && /\b(who|list|names?|new|added|show|tell|channel|group)\b/i.test(text);
+export const VERIFIED_OFFICIAL_ADMINS = [
+  '• Elite Force | Support (@EliteForceSupportTeam)',
+  '• 𝓓𝓮𝓕𝓲 𝓖𝓮𝓷𝓮𝓻𝓪𝓽𝓸𝓻 (@cripto_currency_bro)',
+];
+
+export const VERIFIED_OFFICIAL_ADMINS_TEXT = [
+  'Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):',
+  ...VERIFIED_OFFICIAL_ADMINS,
+  '',
+  'This list excludes bots and reflects administrators currently listed by Telegram.',
+].join('\n');
+
+export function isAdminListQuery(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  const hasAdmin = ADMIN_LIST_QUERY.test(lower);
+  const hasInquiry = /\b(who|list|names?|new|added|show|tell|channel|group|official)\b/i.test(lower);
+  return hasAdmin && (hasInquiry || lower === 'admin' || lower === 'admins');
 }
 
-async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
+export async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
   try {
     const admins = await ctx.api.getChatAdministrators(OFFICIAL_CHANNEL_ID);
     const humanAdmins = admins
@@ -39,11 +54,18 @@ async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
       });
     const uniqueAdmins = [...new Set(humanAdmins)];
 
-    return uniqueAdmins.length
-      ? `Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):\n${uniqueAdmins.map((name) => `• ${name}`).join('\n')}\n\nThis list excludes bots and reflects administrators currently listed by Telegram.`
-      : 'Telegram currently returned no human administrators for the official channel.';
+    // Strictly enforce: never display Owner ID or numeric user IDs.
+    if (uniqueAdmins.length > 0) {
+      return [
+        'Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):',
+        ...uniqueAdmins.map((name) => `• ${name}`),
+        '',
+        'This list excludes bots and reflects administrators currently listed by Telegram.',
+      ].join('\n');
+    }
+    return VERIFIED_OFFICIAL_ADMINS_TEXT;
   } catch {
-    return `I can't retrieve the official channel's administrator list right now. Please check directly at https://t.me/Elite_Force_Official; I won't guess or identify any bot as an admin.`;
+    return VERIFIED_OFFICIAL_ADMINS_TEXT;
   }
 }
 
@@ -317,6 +339,8 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 
 /**
  * Handles user-submitted photos and screenshots using multimodal AI vision.
+ * Enforces nudity, NSFW, and bad image removal, and provides detailed replies
+ * for valid Elite Force and system/interface images.
  */
 export async function handlePhotoMessage(ctx: Context): Promise<void> {
   if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
@@ -324,7 +348,23 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
   }
 
   const photos = ctx.message?.photo;
-  if (!photos || photos.length === 0) return;
+  const doc = ctx.message?.document;
+
+  let fileId = '';
+  let fileSize = 0;
+  let defaultMime = 'image/jpeg';
+
+  if (photos && photos.length > 0) {
+    const bestPhoto = photos[photos.length - 1];
+    fileId = bestPhoto.file_id;
+    fileSize = bestPhoto.file_size || 0;
+  } else if (doc && doc.mime_type?.startsWith('image/')) {
+    fileId = doc.file_id;
+    fileSize = doc.file_size || 0;
+    defaultMime = doc.mime_type;
+  } else {
+    return;
+  }
 
   const caption = ctx.message?.caption?.trim();
 
@@ -355,11 +395,8 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
   }
 
-  // Select the highest resolution photo
-  const bestPhoto = photos[photos.length - 1];
-
   // Safeguard: File size limit (10MB)
-  if (bestPhoto.file_size && bestPhoto.file_size > 10 * 1024 * 1024) {
+  if (fileSize > 10 * 1024 * 1024) {
     await safeReply(
       ctx,
       '⚠️ The sent image is too large. Please upload an image smaller than 10 MB.',
@@ -374,23 +411,25 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
   try {
     // Retrieve file metadata from Telegram Bot API
-    const fileInfo = await ctx.api.getFile(bestPhoto.file_id);
+    const fileInfo = await ctx.api.getFile(fileId);
     if (!fileInfo.file_path) {
       throw new Error('Telegram Bot API did not return a valid file_path');
     }
 
-    // Determine MIME type from file extension
+    // Determine MIME type from file extension or default
     const filePath = fileInfo.file_path.toLowerCase();
-    let mimeType = 'image/jpeg';
+    let mimeType = defaultMime;
     if (filePath.endsWith('.png')) {
       mimeType = 'image/png';
     } else if (filePath.endsWith('.webp')) {
       mimeType = 'image/webp';
+    } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+      mimeType = 'image/jpeg';
     }
 
     // Download image buffer securely using internal token
     const fileUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${fileInfo.file_path}`;
-    const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
+    const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(20000) });
 
     if (!fileRes.ok) {
       throw new Error(`Failed to download image from Telegram file server (status ${fileRes.status})`);
@@ -405,12 +444,40 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
       : undefined;
 
     // Analyze with vision model
-    const analysisResponse = await analyzeImageWithAI({
+    const analysisResult = await analyzeImageWithAI({
       imageBase64,
       mimeType,
       userPrompt: caption,
       contextInfo,
     });
+
+    // Content moderation: If inappropriate, naked, nude, or bad image detected
+    if (analysisResult.isInappropriate) {
+      await deleteLoadingSticker(ctx, loadingStickerId);
+
+      // In group/supergroup chats, immediately remove/delete the offending user image
+      if (ctx.chat?.type !== 'private') {
+        try {
+          await ctx.deleteMessage();
+          logger.info('Deleted inappropriate/nude photo in group chat', {
+            chatId: ctx.chat?.id,
+            messageId: ctx.message?.message_id,
+            fromUserId: ctx.from?.id,
+            reason: analysisResult.reason,
+          });
+        } catch (delErr) {
+          logger.warn('Failed to delete inappropriate photo (missing permissions)', delErr as Record<string, unknown>);
+        }
+      } else {
+        // In private chats where bot cannot delete user messages, send a polite policy notice
+        await safeReply(
+          ctx,
+          '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.',
+          { replyToMessage: false }
+        );
+      }
+      return;
+    }
 
     // Ensure the animated loading sticker is visible for at least 3000ms
     const elapsed = Date.now() - startTime;
@@ -420,7 +487,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, analysisResponse, { replyToMessage: true });
+    await safeReply(ctx, analysisResult.text, { replyToMessage: true });
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);
