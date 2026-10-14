@@ -1,6 +1,7 @@
 import { Context } from 'grammy';
 import { generateSupportResponse } from '../ai/gemini';
 import { analyzeImageWithAI } from '../ai/vision';
+import { moderateImage, isOpenAIModerationAvailable } from '../ai/moderation';
 import { BOT_CONFIG, PUBLIC_COMMANDS } from '../config/bot.config';
 import { env } from '../config/env.config';
 import { botStateManager } from '../bot/state';
@@ -438,46 +439,74 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const arrayBuf = await fileRes.arrayBuffer();
     const imageBase64 = Buffer.from(arrayBuf).toString('base64');
 
-    // Contextual knowledge from official channel
+    // ── Step 1: OpenAI omni-moderation-latest (FREE) ────────────────────────
+    // Runs BEFORE vision to catch nudity/NSFW without consuming paid vision tokens.
+    if (isOpenAIModerationAvailable()) {
+      let moderationFlagged = false;
+      let moderationReason = '';
+      try {
+        const modResult = await moderateImage(imageBase64, mimeType, caption);
+        moderationFlagged = modResult.flagged;
+        moderationReason = modResult.reason ?? 'Content policy violation';
+        logger.info('OpenAI moderation result', {
+          flagged: modResult.flagged,
+          isChildSafety: modResult.isChildSafetyViolation ?? false,
+        });
+      } catch (modErr) {
+        const modErrMsg = modErr instanceof Error ? modErr.message : String(modErr);
+        logger.warn('OpenAI moderation API failed, proceeding to vision analysis', { error: modErrMsg });
+        // fail-open: if moderation API is down, proceed to vision (or fail-closed if configured)
+        if (env.moderationFailClosed) {
+          await deleteLoadingSticker(ctx, loadingStickerId);
+          if (ctx.chat?.type !== 'private') {
+            try { await ctx.deleteMessage(); } catch { /* ignore */ }
+          }
+          await safeReply(
+            ctx,
+            '⚠️ Image could not be verified due to a temporary moderation issue. Please try again shortly.',
+            { replyToMessage: false }
+          );
+          return;
+        }
+      }
+
+      if (moderationFlagged) {
+        await deleteLoadingSticker(ctx, loadingStickerId);
+        if (ctx.chat?.type !== 'private') {
+          try {
+            await ctx.deleteMessage();
+            logger.info('Deleted inappropriate/nude photo in group chat (OpenAI moderation)', {
+              chatId: ctx.chat?.id,
+              messageId: ctx.message?.message_id,
+              fromUserId: ctx.from?.id,
+              reason: moderationReason,
+            });
+          } catch (delErr) {
+            logger.warn('Failed to delete inappropriate photo (missing permissions)',
+              delErr as Record<string, unknown>);
+          }
+        } else {
+          await safeReply(
+            ctx,
+            '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.',
+            { replyToMessage: false }
+          );
+        }
+        return;
+      }
+    }
+
+    // ── Step 2: Vision Analysis (only reached for clean/safe images) ────────
     const contextInfo = caption
       ? getRelevantOfficialChannelContext(caption) || undefined
       : undefined;
 
-    // Analyze with vision model
     const analysisResult = await analyzeImageWithAI({
       imageBase64,
       mimeType,
       userPrompt: caption,
       contextInfo,
     });
-
-    // Content moderation: If inappropriate, naked, nude, or bad image detected
-    if (analysisResult.isInappropriate) {
-      await deleteLoadingSticker(ctx, loadingStickerId);
-
-      // In group/supergroup chats, immediately remove/delete the offending user image
-      if (ctx.chat?.type !== 'private') {
-        try {
-          await ctx.deleteMessage();
-          logger.info('Deleted inappropriate/nude photo in group chat', {
-            chatId: ctx.chat?.id,
-            messageId: ctx.message?.message_id,
-            fromUserId: ctx.from?.id,
-            reason: analysisResult.reason,
-          });
-        } catch (delErr) {
-          logger.warn('Failed to delete inappropriate photo (missing permissions)', delErr as Record<string, unknown>);
-        }
-      } else {
-        // In private chats where bot cannot delete user messages, send a polite policy notice
-        await safeReply(
-          ctx,
-          '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.',
-          { replyToMessage: false }
-        );
-      }
-      return;
-    }
 
     // Ensure the animated loading sticker is visible for at least 3000ms
     const elapsed = Date.now() - startTime;

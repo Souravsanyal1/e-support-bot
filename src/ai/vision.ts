@@ -14,40 +14,44 @@ export interface AnalyzeImageOptions {
 }
 
 export interface VisionAnalysisResult {
+  /** AI-generated analysis text for the image */
   text: string;
-  isInappropriate: boolean;
-  reason?: string;
+  /**
+   * Deprecated — always false now. NSFW detection is handled upstream
+   * by OpenAI omni-moderation-latest in moderation.ts before vision is called.
+   * Kept for backward compatibility with tests.
+   */
+  isInappropriate: false;
 }
 
 /**
- * Builds the multimodal vision prompt ensuring the AI understands its visual capabilities,
- * strictly enforces nudity/bad-image moderation, and prevents repetitive introductions.
+ * Builds the multimodal vision system prompt for image analysis.
+ * NSFW / content moderation is handled separately by OpenAI omni-moderation-latest
+ * BEFORE this function is ever called. By the time this prompt runs, the image
+ * has already been cleared as safe.
  */
 export function buildVisionSystemPrompt(): string {
   return `
 You are Celia, the System & Group Management Admin for Elite Force. You have full multimodal visual perception capabilities and can see, inspect, and analyze uploaded images in high detail.
 
 ==================================================
-SAFETY & CONTENT MODERATION (STRICT ENFORCEMENT)
+IMAGE ANALYSIS GUIDELINES
 ==================================================
-Inspect the image carefully for:
-1. Nudity, naked individuals, underwear/lingerie, exposed breasts/genitals/buttocks, sexually explicit, suggestive adult, pornographic, or NSFW content.
-2. Graphic violence, gore, hate symbols, or offensive/bad material.
+- The image has already been verified as safe content before reaching you.
+- Inspect the image carefully and provide clear, accurate, and helpful information.
+- Identify and explain any visible text, error messages, transaction statuses, wallet addresses, interface buttons, charts, logos, or UI elements.
+- For Elite Force ecosystem images: provide detailed, helpful guidance.
+- For general screenshots or technical images: explain what you see clearly.
+- Never claim that you cannot see or process images.
+- Keep your response professional, helpful, and under 150 words.
 
-IF THE IMAGE CONTAINS ANY NUDITY, NAKEDNESS, SEXUALLY EXPLICIT, NSFW, OR OFFENSIVE CONTENT:
-You MUST respond ONLY with the exact text:
-${INAPPROPRIATE_CONTENT_TAG}
-Do NOT provide any descriptions, commentary, or advice for inappropriate content.
-
 ==================================================
-LEGITIMATE IMAGE ANALYSIS (ELITE FORCE & SYSTEM GUIDANCE)
+RESPONSE RULES
 ==================================================
-If the image is legitimate (e.g. Elite Force announcements, logos, BNB Chain/crypto transactions, wallets, error screenshots, technical interfaces, websites, system diagrams, charts, or user questions):
-- Provide clear, accurate, helpful, and professional guidance in English.
-- Identify and explain any error messages, transaction statuses, buttons, or next steps clearly.
-- CRITICAL CONVERSATIONAL RULE: DO NOT start your response with "I'm Celia, your System & Group Management Admin." Answer the user's question or explain the image directly!
-- Never claim that you cannot see, inspect, or process images.
-- Keep the tone calm, polite, and professional under 150 words.
+- CRITICAL: DO NOT start your response with "I'm Celia, your System & Group Management Admin." Answer directly.
+- Reply in English only.
+- Be concise, accurate, and helpful.
+- If the image is unclear or too small to analyze: say so and ask for a clearer version.
 `.trim();
 }
 
@@ -59,7 +63,7 @@ async function callOpenRouterVision(
   mimeType: string,
   prompt: string,
   modelOverride?: string
-): Promise<VisionAnalysisResult> {
+): Promise<string> {
   if (!env.openrouterApiKey) {
     throw new Error('OpenRouter API key is not configured');
   }
@@ -112,25 +116,11 @@ async function callOpenRouterVision(
   };
   const replyText = data.choices?.[0]?.message?.content?.trim() || '';
 
-  if (
-    replyText.includes(INAPPROPRIATE_CONTENT_TAG) ||
-    replyText.includes('INAPPROPRIATE_CONTENT')
-  ) {
-    return {
-      text: '',
-      isInappropriate: true,
-      reason: 'OpenRouter flagged inappropriate/nude content',
-    };
-  }
-
   if (!replyText) {
     throw new Error('Empty response from OpenRouter Vision API');
   }
 
-  return {
-    text: replyText,
-    isInappropriate: false,
-  };
+  return replyText;
 }
 
 /**
@@ -140,7 +130,7 @@ async function callGeminiVision(
   base64Data: string,
   mimeType: string,
   prompt: string
-): Promise<VisionAnalysisResult> {
+): Promise<string> {
   if (!ai) {
     throw new Error('Gemini API client not initialized');
   }
@@ -166,78 +156,44 @@ async function callGeminiVision(
     if (t.unref) t.unref();
   });
 
-  try {
-    const response = await Promise.race([
-      ai.models.generateContent({
-        model: env.geminiModel,
-        contents: [
-          {
-            role: 'user',
-            parts: [
-              {
-                inlineData: {
-                  mimeType,
-                  data: base64Data,
-                },
+  const response = await Promise.race([
+    ai.models.generateContent({
+      model: env.geminiModel,
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
               },
-              {
-                text: prompt,
-              },
-            ],
-          },
-        ],
-        config: genConfig,
-      }),
-      timeoutPromise,
-    ]);
+            },
+            {
+              text: prompt,
+            },
+          ],
+        },
+      ],
+      config: genConfig,
+    }),
+    timeoutPromise,
+  ]);
 
-    const candidate = response.candidates?.[0];
-    if (candidate?.finishReason === 'SAFETY') {
-      return {
-        text: '',
-        isInappropriate: true,
-        reason: 'Gemini safety filter triggered (adult or harmful image content)',
-      };
-    }
-
-    const replyText = response.text?.trim() || '';
-
-    if (
-      replyText.includes(INAPPROPRIATE_CONTENT_TAG) ||
-      replyText.includes('INAPPROPRIATE_CONTENT')
-    ) {
-      return {
-        text: '',
-        isInappropriate: true,
-        reason: 'Gemini flagged inappropriate/nude content',
-      };
-    }
-
-    if (!replyText) {
-      throw new Error('Empty response from Gemini Vision API');
-    }
-
-    return {
-      text: replyText,
-      isInappropriate: false,
-    };
-  } catch (err: unknown) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    if (errMsg.includes('SAFETY') || errMsg.includes('HARM_CATEGORY')) {
-      return {
-        text: '',
-        isInappropriate: true,
-        reason: `Gemini safety exception: ${errMsg}`,
-      };
-    }
-    throw err;
+  const replyText = response.text?.trim() || '';
+  if (!replyText) {
+    throw new Error('Empty response from Gemini Vision API');
   }
+
+  return replyText;
 }
 
 /**
  * Analyzes an image with multimodal AI support (Gemini & OpenRouter dual fallback).
- * Returns VisionAnalysisResult indicating if the image was flagged as inappropriate/nude
- * or the English analysis response text.
+ *
+ * NOTE: This function assumes the image has ALREADY been moderated by
+ * OpenAI omni-moderation-latest (moderation.ts). Call moderateImage() first;
+ * only call analyzeImageWithAI() if moderation returned flagged=false.
  */
 export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<VisionAnalysisResult> {
   const { imageBase64, mimeType, userPrompt, contextInfo } = options;
@@ -257,13 +213,13 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
   const primary = hour < 12 ? 'gemini' : 'openrouter';
   const secondary = primary === 'gemini' ? 'openrouter' : 'gemini';
 
-  logger.info('Analyzing image using multimodal AI', {
+  logger.info('Analyzing image using multimodal AI (pre-moderated as safe)', {
     primaryProvider: primary,
     mimeType,
     hasCaption: Boolean(userPrompt),
   });
 
-  async function tryVision(provider: 'gemini' | 'openrouter'): Promise<VisionAnalysisResult> {
+  async function tryVision(provider: 'gemini' | 'openrouter'): Promise<string> {
     if (provider === 'gemini') {
       if (!ai) throw new Error('Gemini API is not configured');
       return await callGeminiVision(imageBase64, mimeType, promptWithContext);
@@ -275,22 +231,16 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
 
   try {
     try {
-      const result = await tryVision(primary);
-      logger.info('Primary vision provider succeeded', {
-        provider: primary,
-        isInappropriate: result.isInappropriate,
-      });
-      return result;
+      const text = await tryVision(primary);
+      logger.info('Primary vision provider succeeded', { provider: primary });
+      return { text, isInappropriate: false };
     } catch (primaryErr) {
       logger.warn(`Primary vision provider (${primary}) failed, falling back to ${secondary}`, {
         error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
       });
-      const result = await tryVision(secondary);
-      logger.info('Secondary vision provider succeeded', {
-        provider: secondary,
-        isInappropriate: result.isInappropriate,
-      });
-      return result;
+      const text = await tryVision(secondary);
+      logger.info('Secondary vision provider succeeded', { provider: secondary });
+      return { text, isInappropriate: false };
     }
   } catch (err) {
     logger.error('All vision providers failed for image analysis', err);

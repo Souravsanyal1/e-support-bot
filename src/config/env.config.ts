@@ -10,6 +10,8 @@ export interface AppConfig {
   readonly openrouterModel: string;
   readonly geminiApiKey?: string;
   readonly geminiModel: string;
+  /** OpenAI API key — used exclusively for the free omni-moderation-latest endpoint. No charges for moderation calls. */
+  readonly openaiApiKey?: string;
   readonly adminUserIds: ReadonlySet<number>;
   readonly timezone: string;
   readonly botMode: 'polling' | 'webhook';
@@ -20,6 +22,8 @@ export interface AppConfig {
   readonly rateLimitWindowSeconds: number;
   readonly maxConversationHistory: number;
   readonly sessionTtlMinutes: number;
+  /** Whether to block images when OpenAI moderation API is unavailable (fail-closed). Default: false = allow image through. */
+  readonly moderationFailClosed: boolean;
 }
 
 /**
@@ -60,6 +64,11 @@ function loadAndValidateConfig(): AppConfig {
       : undefined;
 
   const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+
+  // OpenAI API key — only used for the FREE omni-moderation-latest endpoint
+  const rawOpenAIKey = process.env.OPENAI_API_KEY?.trim();
+  const openaiApiKey =
+    rawOpenAIKey && rawOpenAIKey !== 'your_openai_api_key_here' ? rawOpenAIKey : undefined;
 
   const specifiedProvider = process.env.AI_PROVIDER?.trim().toLowerCase();
   const aiProvider: 'openrouter' | 'gemini' =
@@ -144,6 +153,8 @@ function loadAndValidateConfig(): AppConfig {
     10
   );
 
+  const moderationFailClosed = process.env.MODERATION_FAIL_CLOSED?.trim().toLowerCase() === 'true';
+
   return {
     telegramBotToken,
     aiProvider,
@@ -151,6 +162,7 @@ function loadAndValidateConfig(): AppConfig {
     openrouterModel,
     geminiApiKey,
     geminiModel,
+    openaiApiKey,
     adminUserIds,
     timezone,
     botMode,
@@ -161,6 +173,7 @@ function loadAndValidateConfig(): AppConfig {
     rateLimitWindowSeconds: isNaN(rateLimitWindowSeconds) ? 60 : rateLimitWindowSeconds,
     maxConversationHistory: isNaN(maxConversationHistory) ? 6 : maxConversationHistory,
     sessionTtlMinutes: isNaN(sessionTtlMinutes) ? 30 : sessionTtlMinutes,
+    moderationFailClosed,
   };
 }
 
@@ -179,6 +192,9 @@ export function sanitizeLogString(message: string): string {
   }
   if (env.geminiApiKey) {
     sanitized = sanitized.split(env.geminiApiKey).join('[REDACTED_GEMINI_KEY]');
+  }
+  if (env.openaiApiKey) {
+    sanitized = sanitized.split(env.openaiApiKey).join('[REDACTED_OPENAI_KEY]');
   }
   if (env.webhookSecret) {
     sanitized = sanitized.split(env.webhookSecret).join('[REDACTED_WEBHOOK_SECRET]');
