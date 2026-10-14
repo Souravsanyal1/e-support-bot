@@ -175,12 +175,14 @@ async function main(): Promise<void> {
     // Resilient Polling Loop with Exponential Backoff & Automatic Recovery
     let retryDelayMs = 2000;
     const MAX_RETRY_DELAY_MS = 30000;
+    let conflictRetryCount = 0;
+    const MAX_CONFLICT_DELAY_MS = 60000;
 
     while (!isShuttingDown) {
       try {
-        // Ensure any existing webhook is removed before starting polling
+        // Aggressively clear any existing webhook/polling session before starting
         try {
-          await bot.api.deleteWebhook({ drop_pending_updates: false });
+          await bot.api.deleteWebhook({ drop_pending_updates: true });
           logger.info('Cleared previous webhooks; polling initialized.');
         } catch (delErr) {
           logger.warn('Notice clearing webhooks (will continue to start polling)', {
@@ -197,12 +199,16 @@ async function main(): Promise<void> {
           });
         }
 
+        // Reset conflict counter on each successful start attempt
+        conflictRetryCount = 0;
+
         // Start long-polling
         logger.info('Starting Telegram polling loop...');
         await bot.start({
           drop_pending_updates: false,
           onStart: (botInfo) => {
             retryDelayMs = 2000; // Reset backoff on successful connect
+            conflictRetryCount = 0;
             logger.info(`Celia, your System & Group Management Admin is online and running! 🚀`, {
               username: botInfo.username,
               id: botInfo.id,
@@ -229,12 +235,22 @@ async function main(): Promise<void> {
           process.exit(1);
         }
 
-        // 409 Conflict: Another instance is running (or previous connection taking a moment to release)
+        // 409 Conflict: Another instance is still holding the polling connection.
+        // Aggressively attempt to force-release it via deleteWebhook, then back off with increasing delay.
         if (errMsg.includes('409') || errMsg.includes('Conflict')) {
+          conflictRetryCount++;
+          // Exponential backoff: 15s, 25s, 40s, capped at 60s
+          const conflictDelayMs = Math.min(10000 + conflictRetryCount * 15000, MAX_CONFLICT_DELAY_MS);
           logger.warn(
-            '⚠️ 409 Conflict: Another bot instance is currently active with this token. Waiting 10 seconds before retrying...'
+            `⚠️ 409 Conflict: Another bot instance is currently active (attempt ${conflictRetryCount}). Force-clearing session and waiting ${conflictDelayMs / 1000}s...`
           );
-          await new Promise((res) => setTimeout(res, 10000));
+          // Force-kill the competing session
+          try {
+            await bot.api.deleteWebhook({ drop_pending_updates: true });
+          } catch {
+            // Best-effort; ignore if it also fails
+          }
+          await new Promise((res) => setTimeout(res, conflictDelayMs));
           continue;
         }
 
