@@ -3,7 +3,7 @@ import { generateSupportResponse } from '../ai/gemini';
 import { analyzeImageWithAI } from '../ai/vision';
 import {
   moderateImage,
-  isOpenAIModerationAvailable,
+  isImageModerationAvailable,
   isMessageAlreadyProcessed,
   markMessageAsProcessed,
   shouldModerateChat,
@@ -450,7 +450,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
     const shouldModerate = shouldModerateChat(ctx.chat?.id, isGroup) && !isSenderAdmin;
 
-    if (shouldModerate && isOpenAIModerationAvailable()) {
+    if (shouldModerate && isImageModerationAvailable()) {
       let moderationFlagged = false;
       let moderationReason = '';
       try {
@@ -468,9 +468,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
         // fail-open: if moderation API is down, proceed to vision (or fail-closed if configured)
         if (env.moderationFailClosed) {
           await deleteLoadingSticker(ctx, loadingStickerId);
-          if (isGroup) {
-            try { await ctx.deleteMessage(); } catch { /* ignore */ }
-          }
+          try { await ctx.deleteMessage(); } catch { /* ignore */ }
           await safeReply(
             ctx,
             '⚠️ Image could not be verified due to a temporary moderation issue. Please try again shortly.',
@@ -553,6 +551,20 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);
+    const errMsg = error instanceof Error ? error.message : String(error);
+    if (/safety|inappropriate|explicit|nude|nsfw|adult|content_filter|blocked|refus/i.test(errMsg)) {
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        // ignore
+      }
+      await safeReply(
+        ctx,
+        env.imageModerationWarningMessage,
+        { replyToMessage: false }
+      );
+      return;
+    }
     await safeReply(
       ctx,
       "I'm temporarily experiencing an issue analyzing this image. Please ensure the image is clear and try again in a few moments.",

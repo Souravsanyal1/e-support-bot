@@ -976,15 +976,18 @@ async function runTests() {
     }
     // Mock OpenAI moderation endpoint → returns flagged: true
     if (urlStr.includes('api.openai.com') || urlStr.includes('moderations')) {
+      const payload = {
+        results: [{
+          flagged: true,
+          categories: { sexual: true, 'sexual/minors': false },
+        }],
+      };
       return {
         ok: true,
         status: 200,
-        json: async () => ({
-          results: [{
-            flagged: true,
-            categories: { sexual: true, 'sexual/minors': false },
-          }],
-        }),
+        headers: new Headers({ 'content-type': 'application/json' }),
+        text: async () => JSON.stringify(payload),
+        json: async () => payload,
       } as unknown as Response;
     }
     return originalFetch2(input, init);
@@ -999,7 +1002,7 @@ async function runTests() {
     // If no key configured → no moderation, no delete (handled in else branch below)
     if (isOpenAIModerationAvailable()) {
       assert.strictEqual(inappropriateDeleted, true, 'Inappropriate/nude photo in group must be deleted by OpenAI moderation');
-      assert.strictEqual(inappropriateReplied, false, 'Inappropriate photo must NOT receive a reply');
+      assert.strictEqual(inappropriateReplied, true, 'Inappropriate photo must receive the warning notice');
     }
   } finally {
     global.fetch = originalFetch2;

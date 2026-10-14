@@ -23,13 +23,22 @@ export interface VisionAnalysisResult {
 export function isInappropriateResponse(text: string): boolean {
   const lower = text.toLowerCase().trim();
   if (lower.includes(INAPPROPRIATE_CONTENT_TAG.toLowerCase())) return true;
-  if (lower.includes("unable to assist with that")) return true;
-  if (lower.includes("cannot assist with that")) return true;
-  if (lower.includes("cannot assist with this image")) return true;
+  if (lower.includes('unable to assist with that')) return true;
+  if (lower.includes('cannot assist with that')) return true;
+  if (lower.includes('cannot assist with this image')) return true;
   if (lower.includes("can't help with that")) return true;
-  if (lower.includes("cannot fulfill this request")) return true;
-  if (lower.includes("violates our safety policy")) return true;
-  if (lower.includes("violates our usage policy")) return true;
+  if (lower.includes('cannot fulfill this request')) return true;
+  if (lower.includes('unable to fulfill this request')) return true;
+  if (lower.includes('violates our safety policy')) return true;
+  if (lower.includes('violates our usage policy')) return true;
+  if (lower.includes('violates the safety policy')) return true;
+  if (lower.includes('safety policy')) return true;
+  if (lower.includes('sexually explicit')) return true;
+  if (lower.includes('explicit content')) return true;
+  if (lower.includes('nude') || lower.includes('nudity')) return true;
+  if (lower.includes('adult material') || lower.includes('adult content')) return true;
+  if (lower.includes('pornographic') || lower.includes('pornography')) return true;
+  if (lower.includes('refusing to generate sexually explicit')) return true;
   return false;
 }
 
@@ -113,6 +122,11 @@ async function callOpenRouterVision(
 
   if (!res.ok) {
     const errorData = await res.json().catch(() => ({}));
+    const errStr = JSON.stringify(errorData).toLowerCase();
+    if (errStr.includes('content_filter') || errStr.includes('safety') || errStr.includes('policy')) {
+      logger.warn('OpenRouter flagged image via safety filter');
+      return INAPPROPRIATE_CONTENT_TAG;
+    }
     if (modelToUse !== 'openai/gpt-4o-mini') {
       logger.warn(`OpenRouter model ${modelToUse} failed for vision, falling back to openai/gpt-4o-mini`);
       return callOpenRouterVision(base64Data, mimeType, prompt, 'openai/gpt-4o-mini');
@@ -165,44 +179,61 @@ async function callGeminiVision(
     if (t.unref) t.unref();
   });
 
-  const response = await Promise.race([
-    ai.models.generateContent({
-      model: env.geminiModel,
-      contents: [
-        {
-          role: 'user',
-          parts: [
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
+  try {
+    const response = await Promise.race([
+      ai.models.generateContent({
+        model: env.geminiModel,
+        contents: [
+          {
+            role: 'user',
+            parts: [
+              {
+                inlineData: {
+                  mimeType,
+                  data: base64Data,
+                },
               },
-            },
-            {
-              text: prompt,
-            },
-          ],
-        },
-      ],
-      config: genConfig,
-    }),
-    timeoutPromise,
-  ]);
+              {
+                text: prompt,
+              },
+            ],
+          },
+        ],
+        config: genConfig,
+      }),
+      timeoutPromise,
+    ]);
 
-  const replyText = response.text?.trim() || '';
-  if (!replyText) {
-    throw new Error('Empty response from Gemini Vision API');
+    // Check candidate finishReason and promptFeedback for safety refusals
+    const candidate = response.candidates?.[0];
+    if (
+      candidate?.finishReason === 'SAFETY' ||
+      response.promptFeedback?.blockReason === 'SAFETY'
+    ) {
+      logger.warn('Gemini Vision flagged image with SAFETY finishReason');
+      return INAPPROPRIATE_CONTENT_TAG;
+    }
+
+    const replyText = response.text?.trim() || '';
+    if (!replyText) {
+      // Empty response from Gemini on an image is typically a safety refusal
+      logger.warn('Gemini Vision returned empty text; treating as safety refusal');
+      return INAPPROPRIATE_CONTENT_TAG;
+    }
+
+    return replyText;
+  } catch (err: unknown) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (/safety|finishreason|blocked|harm_category|policy|explicit|nude|sex/i.test(errMsg)) {
+      logger.warn('Gemini Vision caught safety error; treating as inappropriate content', { error: errMsg });
+      return INAPPROPRIATE_CONTENT_TAG;
+    }
+    throw err;
   }
-
-  return replyText;
 }
 
 /**
  * Analyzes an image with multimodal AI support (Gemini & OpenRouter dual fallback).
- *
- * NOTE: This function assumes the image has ALREADY been moderated by
- * OpenAI omni-moderation-latest (moderation.ts). Call moderateImage() first;
- * only call analyzeImageWithAI() if moderation returned flagged=false.
  */
 export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<VisionAnalysisResult> {
   const { imageBase64, mimeType, userPrompt, contextInfo } = options;
@@ -219,7 +250,8 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
 
   // Schedule based: 0-11 hrs Gemini, 12-23 hrs OpenRouter (with mutual auto-fallback)
   const hour = new Date().getHours();
-  const primary = hour < 12 ? 'gemini' : 'openrouter';
+  const scheduledPrimary = hour < 12 ? 'gemini' : 'openrouter';
+  const primary = (scheduledPrimary === 'openrouter' && !env.openrouterApiKey) ? 'gemini' : scheduledPrimary;
   const secondary = primary === 'gemini' ? 'openrouter' : 'gemini';
 
   logger.info('Analyzing image using multimodal AI (pre-moderated as safe)', {
@@ -260,7 +292,13 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
 
     return { text: rawText, isInappropriate: false };
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    if (/safety|inappropriate|explicit|nude|nsfw|adult|content_filter|blocked/i.test(errMsg)) {
+      logger.warn('Vision providers rejected image due to safety policy', { error: errMsg });
+      return { text: '', isInappropriate: true };
+    }
     logger.error('All vision providers failed for image analysis', err);
     throw new Error('Unable to analyze image at this time due to temporary AI vision unavailability.');
   }
 }
+
