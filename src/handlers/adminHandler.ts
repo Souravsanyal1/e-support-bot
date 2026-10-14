@@ -3,6 +3,7 @@ import { env } from '../config/env.config';
 import { safeReply } from '../utils/telegram';
 import { logger } from '../utils/logger';
 import { botStateManager } from '../bot/state';
+import { knowledgeSyncService } from '../services/knowledgeSync';
 import {
   parseTimeCommand,
   formatTimerConfirmation,
@@ -240,17 +241,62 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
 }
 
 /**
+ * Handles the admin /sync command.
+ * Manually triggers knowledge sync and reports detailed source status.
+ */
+export async function handleAdminSync(ctx: Context): Promise<void> {
+  logger.info('Admin triggered manual knowledge sync');
+
+  try {
+    const status = await knowledgeSyncService.syncKnowledge({ force: true });
+    const sourceLines = status.sources.map(
+      (s) => `• *${s.source}:* \`${s.status.toUpperCase()}\`${s.message ? ` (${s.message})` : ''}`
+    );
+
+    const report = [
+      `*✅ Celia — Knowledge Base Synchronized*`,
+      '',
+      `• *Version:* \`v${status.version}\``,
+      `• *Characters:* \`${status.totalCharacters}\``,
+      `• *Content Hash:* \`${status.contentHash ? status.contentHash.slice(0, 10) : 'n/a'}\``,
+      `• *Last Synced:* \`${status.lastSuccessfulSyncAt || 'Now'}\``,
+      '',
+      `*Source Details:*`,
+      ...sourceLines,
+      '',
+      `_The active system prompt has hot-reloaded the updated knowledge._`,
+    ].join('\n');
+
+    await safeReply(ctx, report);
+  } catch (err) {
+    const errorMsg = err instanceof Error ? err.message : String(err);
+    logger.error('Manual knowledge sync failed', err);
+    await safeReply(ctx, `⚠️ *Knowledge sync failed:* ${errorMsg}\n\nFalling back to last-known-good backup.`);
+  }
+}
+
+/**
  * Handles the admin /reload command.
  */
 export async function handleAdminReload(ctx: Context): Promise<void> {
   logger.info('Admin triggered system reload');
 
+  // Trigger knowledge sync check
+  try {
+    await knowledgeSyncService.syncKnowledge();
+  } catch {
+    // Non-fatal
+  }
+
+  const syncStatus = knowledgeSyncService.getStatus();
+
   const message = [
     `*🔄 Celia — Reload Complete*`,
     '',
     `• *User conversation memory:* Disabled`,
-    `• *Knowledge base & system prompt:* Re-read for the next response`,
+    `• *Knowledge base & system prompt:* Re-read from \`${env.knowledgeFilePath}\` (v${syncStatus.version})`,
     `• *Official channel training data:* Auto-synced from new/edit posts`,
+    `• *Image Moderation:* \`${env.enableImageModeration ? 'ENABLED' : 'DISABLED'}\` (Threshold: ${env.imageModerationConfidenceThreshold})`,
     `• *Active Model:* \`${env.geminiModel}\``,
     '',
     `System is running with optimal configuration.`,

@@ -1,7 +1,13 @@
 import { Context } from 'grammy';
 import { generateSupportResponse } from '../ai/gemini';
 import { analyzeImageWithAI } from '../ai/vision';
-import { moderateImage, isOpenAIModerationAvailable } from '../ai/moderation';
+import {
+  moderateImage,
+  isOpenAIModerationAvailable,
+  isMessageAlreadyProcessed,
+  markMessageAsProcessed,
+  shouldModerateChat,
+} from '../ai/moderation';
 import { BOT_CONFIG, PUBLIC_COMMANDS } from '../config/bot.config';
 import { env } from '../config/env.config';
 import { botStateManager } from '../bot/state';
@@ -367,6 +373,14 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  const messageId = ctx.message?.message_id;
+  if (messageId && isMessageAlreadyProcessed(messageId)) {
+    return;
+  }
+  if (messageId) {
+    markMessageAsProcessed(messageId);
+  }
+
   const caption = ctx.message?.caption?.trim();
 
   // If caption has non-English text or bad words, enforce community guidelines
@@ -439,26 +453,30 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const arrayBuf = await fileRes.arrayBuffer();
     const imageBase64 = Buffer.from(arrayBuf).toString('base64');
 
-    // ── Step 1: OpenAI omni-moderation-latest (FREE) ────────────────────────
-    // Runs BEFORE vision to catch nudity/NSFW without consuming paid vision tokens.
-    if (isOpenAIModerationAvailable()) {
+    // ── Step 1: Inappropriate Image Detection & Auto-Moderation (Req 18) ────────
+    const isGroup = ctx.chat?.type !== 'private';
+    const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
+    const shouldModerate = shouldModerateChat(ctx.chat?.id, isGroup) && !isSenderAdmin;
+
+    if (shouldModerate && isOpenAIModerationAvailable()) {
       let moderationFlagged = false;
       let moderationReason = '';
       try {
         const modResult = await moderateImage(imageBase64, mimeType, caption);
         moderationFlagged = modResult.flagged;
         moderationReason = modResult.reason ?? 'Content policy violation';
-        logger.info('OpenAI moderation result', {
+        logger.info('Image moderation result', {
           flagged: modResult.flagged,
+          confidence: modResult.confidence,
           isChildSafety: modResult.isChildSafetyViolation ?? false,
         });
       } catch (modErr) {
         const modErrMsg = modErr instanceof Error ? modErr.message : String(modErr);
-        logger.warn('OpenAI moderation API failed, proceeding to vision analysis', { error: modErrMsg });
+        logger.warn('Image moderation API failed, proceeding to vision analysis', { error: modErrMsg });
         // fail-open: if moderation API is down, proceed to vision (or fail-closed if configured)
         if (env.moderationFailClosed) {
           await deleteLoadingSticker(ctx, loadingStickerId);
-          if (ctx.chat?.type !== 'private') {
+          if (isGroup) {
             try { await ctx.deleteMessage(); } catch { /* ignore */ }
           }
           await safeReply(
@@ -472,23 +490,31 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
       if (moderationFlagged) {
         await deleteLoadingSticker(ctx, loadingStickerId);
-        if (ctx.chat?.type !== 'private') {
+        if (isGroup) {
           try {
             await ctx.deleteMessage();
-            logger.info('Deleted inappropriate/nude photo in group chat (OpenAI moderation)', {
+            logger.info('Deleted inappropriate/nude photo in group chat', {
               chatId: ctx.chat?.id,
               messageId: ctx.message?.message_id,
               fromUserId: ctx.from?.id,
               reason: moderationReason,
             });
           } catch (delErr) {
-            logger.warn('Failed to delete inappropriate photo (missing permissions)',
-              delErr as Record<string, unknown>);
+            logger.warn('Failed to delete inappropriate photo (missing bot admin Delete Messages permission)', {
+              error: delErr instanceof Error ? delErr.message : String(delErr),
+            });
           }
+
+          // Requirement 18.B: Send exact warning message to the same group
+          await safeReply(
+            ctx,
+            env.imageModerationWarningMessage,
+            { replyToMessage: false }
+          );
         } else {
           await safeReply(
             ctx,
-            '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.',
+            env.imageModerationWarningMessage,
             { replyToMessage: false }
           );
         }

@@ -221,6 +221,90 @@ The bot is designed to run easily on free-tier cloud platforms.
 
 ---
 
+---
+
+## 🧠 Auto-Updating Knowledge System
+
+The bot features a zero-maintenance, automated Markdown knowledge synchronization system that collects and verifies official Elite Force information without requiring manual `.md` file updates:
+
+* **Official Sources**:
+  * Official Web Portals: `https://elite-force.space` and `https://timer.elite-force.space`
+  * Official Telegram Channel Feed: `@Elite_Force_Official`
+  * On-Chain Specifications: BNB Smart Chain BEP-20 native token parameters
+* **Enterprise Safeguards**:
+  * **SSRF Prevention**: Strict domain whitelisting and blocking of private/loopback/internal IPs.
+  * **Content Sanitization**: Strips scripts, styles, HTML tags, and neutralizes prompt injection payloads.
+  * **Change Detection**: SHA-256 hash comparison avoids redundant writes when sources are unchanged.
+  * **Schema Validation & Rollback**: Validates essential tokens and markers before publishing; automatically rolls back to `knowledge/elite-force-knowledge.last-good.md` on failure.
+  * **Hot-Reloading**: Automatically picked up by the AI system prompt on each inquiry without server restarts.
+  * **Admin Triggers**: Run `/sync` or `/reload` in Telegram for instant on-demand synchronization and telemetry reporting.
+
+### Configuration
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `ENABLE_KNOWLEDGE_SYNC` | Enable background synchronization | `true` |
+| `KNOWLEDGE_SYNC_INTERVAL_MINUTES` | Frequency of background sync cycles | `15` |
+| `KNOWLEDGE_FILE_PATH` | Path to generated authoritative knowledge file | `knowledge/elite-force-knowledge.md` |
+| `OFFICIAL_WEBSITE_URL` | Official ecosystem portal URL | `https://elite-force.space` |
+| `OFFICIAL_TIMER_URL` | Official countdown timer URL | `https://timer.elite-force.space` |
+
+---
+
+## 🚫 Inappropriate Image Detection & Auto-Moderation
+
+To maintain a safe and professional environment across official Elite Force community groups, the bot implements a two-step moderation and multimodal vision pipeline:
+
+1. **Step 1 — Zero-Cost Moderation**: Incoming images are first analyzed using OpenAI's `omni-moderation-latest` endpoint (100% free with no token charges).
+2. **Step 2 — Automatic Group Deletion & Warning**:
+   * If an image is flagged as sexually explicit, adult, or nude with sufficient confidence, the bot immediately deletes the offending message via the Telegram API.
+   * Sends the official English warning:
+     ```
+     ⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.
+     ```
+   * Deduplication caching prevents repeated warnings or re-processing of the same message.
+   * Graceful Telegram permission handling (logs warnings if `can_delete_messages` is missing).
+3. **Step 3 — Vision Analysis**: Only clean, safe images are passed to Gemini / OpenRouter for question answering and visual assistance.
+
+### Configuration
+
+| Variable | Description | Default |
+| :--- | :--- | :--- |
+| `ENABLE_IMAGE_MODERATION` | Enable inappropriate image detection | `true` |
+| `MODERATION_GROUP_IDS` | Comma-separated group chat IDs (empty = all groups) | `""` |
+| `IMAGE_MODERATION_PROVIDER` | Moderation provider (`openai`, `gemini`, `openrouter`) | `openai` |
+| `IMAGE_MODERATION_CONFIDENCE_THRESHOLD` | Confidence score cutoff (0.0 to 1.0) | `0.80` |
+| `IMAGE_MODERATION_TIMEOUT_MS` | API request timeout in milliseconds | `10000` |
+| `IMAGE_MODERATION_WARNING_MESSAGE` | Warning sent to community group | Exact official warning |
+
+---
+
+## 🧪 Testing & Verification
+
+Run the full automated test suite covering all 26 test cases:
+
+```bash
+# Type-check TypeScript sources
+npm run typecheck
+
+# Run all 26 automated unit and integration tests
+npm test
+```
+
+Tests cover:
+* Input sanitization & control character stripping
+* Message chunking & Telegram markdown formatting
+* System prompt rules, non-repetitive greetings, and admin verification
+* Secret redaction in logs and error traces
+* Rate limiting & conversation memory sliding window
+* Language detection & bad words moderation
+* SSRF validation & host whitelisting
+* Prompt injection neutralization in external web data
+* Knowledge schema validation, hash-based change detection & rollback
+* OpenAI moderation, confidence thresholds, deduplication, and error boundaries
+
+---
+
 ## 🔒 Security Best Practices
 
 1. **Never Commit Secrets**: Never push `.env` files or hardcode tokens into any file.

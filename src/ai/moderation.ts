@@ -15,7 +15,8 @@ function getClient(): OpenAI {
   if (!env.openaiApiKey) {
     throw new Error('OPENAI_API_KEY is not configured');
   }
-  _client = new OpenAI({ apiKey: env.openaiApiKey, timeout: 15_000, maxRetries: 1 });
+  const timeoutMs = env.imageModerationTimeoutMs || 10_000;
+  _client = new OpenAI({ apiKey: env.openaiApiKey, timeout: timeoutMs, maxRetries: 1 });
   return _client;
 }
 
@@ -26,8 +27,48 @@ export interface ModerationResult {
   reason?: string;
   /** Detected categories that triggered the flag */
   categories?: string[];
+  /** Confidence score (0.0 to 1.0) */
+  confidence?: number;
   /** Whether it was a child-safety violation */
   isChildSafetyViolation?: boolean;
+}
+
+// In-memory LRU-style deduplication cache to prevent duplicate warnings and processing
+const processedMessages = new Map<number, number>();
+const DEDUPLICATION_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function isMessageAlreadyProcessed(messageId: number): boolean {
+  const timestamp = processedMessages.get(messageId);
+  if (!timestamp) return false;
+  if (Date.now() - timestamp > DEDUPLICATION_TTL_MS) {
+    processedMessages.delete(messageId);
+    return false;
+  }
+  return true;
+}
+
+export function markMessageAsProcessed(messageId: number): void {
+  // Prune expired entries
+  const now = Date.now();
+  for (const [id, time] of processedMessages.entries()) {
+    if (now - time > DEDUPLICATION_TTL_MS) {
+      processedMessages.delete(id);
+    }
+  }
+  processedMessages.set(messageId, now);
+}
+
+/**
+ * Checks if moderation is enabled and if the chat is targeted for moderation.
+ */
+export function shouldModerateChat(chatId?: number, isGroup = true): boolean {
+  if (!env.enableImageModeration) return false;
+  // If moderationGroupIds is specified, chat ID must be included
+  if (env.moderationGroupIds.size > 0) {
+    return chatId !== undefined && env.moderationGroupIds.has(chatId);
+  }
+  // Otherwise, default applies to group/channel chats
+  return isGroup;
 }
 
 /**
@@ -78,31 +119,39 @@ export async function moderateImage(
     throw new Error('Empty response from OpenAI moderation API');
   }
 
-  // Cast to access string-keyed category properties safely
+  // Cast to access string-keyed category properties and scores safely
   const cats = result.categories as unknown as Record<string, boolean>;
+  const catScores = ((result as unknown as { category_scores?: Record<string, number> }).category_scores || {}) as Record<string, number>;
 
-  const sexualMinors = cats['sexual/minors'] === true;
-  const sexual = cats['sexual'] === true;
+  const sexualMinorsScore = catScores['sexual/minors'] ?? (cats['sexual/minors'] ? 1.0 : 0.0);
+  const sexualScore = catScores['sexual'] ?? (cats['sexual'] ? 1.0 : 0.0);
+  const threshold = env.imageModerationConfidenceThreshold;
+
+  const sexualMinors = cats['sexual/minors'] === true || sexualMinorsScore >= threshold;
+  const sexual = cats['sexual'] === true || sexualScore >= threshold;
 
   if (sexualMinors) {
-    logger.warn('Image moderation: potential child-safety violation detected');
+    logger.warn('Image moderation: potential child-safety violation detected', { score: sexualMinorsScore });
     return {
       flagged: true,
       reason: 'Potential child-safety violation',
       categories: ['sexual/minors'],
+      confidence: sexualMinorsScore,
       isChildSafetyViolation: true,
     };
   }
 
   if (sexual) {
+    logger.info('Image moderation: sexual content detected', { score: sexualScore, threshold });
     return {
       flagged: true,
       reason: 'Sexual / explicit content detected',
       categories: ['sexual'],
+      confidence: sexualScore,
     };
   }
 
-  return { flagged: false };
+  return { flagged: false, confidence: Math.max(sexualScore, sexualMinorsScore) };
 }
 
 /**

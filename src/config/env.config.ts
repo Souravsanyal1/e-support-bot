@@ -24,6 +24,19 @@ export interface AppConfig {
   readonly sessionTtlMinutes: number;
   /** Whether to block images when OpenAI moderation API is unavailable (fail-closed). Default: false = allow image through. */
   readonly moderationFailClosed: boolean;
+  // Knowledge Auto-Sync System Configuration
+  readonly enableKnowledgeSync: boolean;
+  readonly knowledgeSyncIntervalMinutes: number;
+  readonly knowledgeFilePath: string;
+  readonly officialWebsiteUrl: string;
+  readonly officialTimerUrl: string;
+  // Inappropriate Image Detection & Auto-Moderation (Req 18)
+  readonly enableImageModeration: boolean;
+  readonly moderationGroupIds: ReadonlySet<number>;
+  readonly imageModerationProvider: 'openai' | 'gemini' | 'openrouter';
+  readonly imageModerationConfidenceThreshold: number;
+  readonly imageModerationTimeoutMs: number;
+  readonly imageModerationWarningMessage: string;
 }
 
 /**
@@ -155,6 +168,44 @@ function loadAndValidateConfig(): AppConfig {
 
   const moderationFailClosed = process.env.MODERATION_FAIL_CLOSED?.trim().toLowerCase() === 'true';
 
+  // Knowledge Auto-Sync System Configuration
+  const enableKnowledgeSync = process.env.ENABLE_KNOWLEDGE_SYNC?.trim().toLowerCase() !== 'false';
+  const rawSyncInterval = parseInt(process.env.KNOWLEDGE_SYNC_INTERVAL_MINUTES?.trim() || '15', 10);
+  const knowledgeSyncIntervalMinutes = isNaN(rawSyncInterval) || rawSyncInterval < 1 ? 15 : rawSyncInterval;
+  const knowledgeFilePath = process.env.KNOWLEDGE_FILE_PATH?.trim() || 'knowledge/elite-force-knowledge.md';
+  const officialWebsiteUrl = process.env.OFFICIAL_WEBSITE_URL?.trim() || 'https://elite-force.space';
+  const officialTimerUrl = process.env.OFFICIAL_TIMER_URL?.trim() || 'https://timer.elite-force.space';
+
+  // Inappropriate Image Detection & Auto-Moderation Configuration (Req 18)
+  const enableImageModeration = process.env.ENABLE_IMAGE_MODERATION?.trim().toLowerCase() !== 'false';
+
+  // Parse allowed moderation group IDs (empty set = all groups)
+  const moderationGroupIds = new Set<number>();
+  const rawModGroups = process.env.MODERATION_GROUP_IDS?.trim();
+  if (rawModGroups) {
+    for (const rawId of rawModGroups.split(',')) {
+      const parsed = parseInt(rawId.trim(), 10);
+      if (!isNaN(parsed)) {
+        moderationGroupIds.add(parsed);
+      }
+    }
+  }
+
+  const rawModProvider = process.env.IMAGE_MODERATION_PROVIDER?.trim().toLowerCase();
+  const imageModerationProvider: 'openai' | 'gemini' | 'openrouter' =
+    rawModProvider === 'gemini' || rawModProvider === 'openrouter' ? rawModProvider : 'openai';
+
+  const rawThreshold = parseFloat(process.env.IMAGE_MODERATION_CONFIDENCE_THRESHOLD?.trim() || '0.80');
+  const imageModerationConfidenceThreshold =
+    isNaN(rawThreshold) || rawThreshold < 0 || rawThreshold > 1 ? 0.80 : rawThreshold;
+
+  const rawTimeout = parseInt(process.env.IMAGE_MODERATION_TIMEOUT_MS?.trim() || '10000', 10);
+  const imageModerationTimeoutMs = isNaN(rawTimeout) || rawTimeout < 1000 ? 10000 : rawTimeout;
+
+  const imageModerationWarningMessage =
+    process.env.IMAGE_MODERATION_WARNING_MESSAGE?.trim() ||
+    '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.';
+
   return {
     telegramBotToken,
     aiProvider,
@@ -174,6 +225,17 @@ function loadAndValidateConfig(): AppConfig {
     maxConversationHistory: isNaN(maxConversationHistory) ? 6 : maxConversationHistory,
     sessionTtlMinutes: isNaN(sessionTtlMinutes) ? 30 : sessionTtlMinutes,
     moderationFailClosed,
+    enableKnowledgeSync,
+    knowledgeSyncIntervalMinutes,
+    knowledgeFilePath,
+    officialWebsiteUrl,
+    officialTimerUrl,
+    enableImageModeration,
+    moderationGroupIds,
+    imageModerationProvider,
+    imageModerationConfidenceThreshold,
+    imageModerationTimeoutMs,
+    imageModerationWarningMessage,
   };
 }
 

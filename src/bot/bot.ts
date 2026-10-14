@@ -25,6 +25,7 @@ import {
   handleAdminOff,
   handleAdminOn,
   handleAdminTime,
+  handleAdminSync,
 } from '../handlers/adminHandler';
 
 /**
@@ -77,6 +78,7 @@ export function createBot(): Bot {
   // 4. Admin-Only Commands (Protected by requireAdmin middleware)
   bot.command('status', requireAdmin, handleAdminStatus);
   bot.command('reload', requireAdmin, handleAdminReload);
+  bot.command('sync', requireAdmin, handleAdminSync);
   bot.command('broadcast', requireAdmin, handleAdminBroadcast);
   bot.command('users', requireAdmin, handleAdminUsers);
   bot.command('off', requireAdmin, handleAdminOff);

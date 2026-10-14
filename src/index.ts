@@ -6,6 +6,7 @@ import { logger } from './utils/logger';
 import { createBot } from './bot/bot';
 import { registerBotCommands } from './bot/commands';
 import { rateLimiter } from './middleware/rateLimiter';
+import { knowledgeSyncService } from './services/knowledgeSync';
 
 // Global Process Safety Guards (Prevent unhandled async errors from crashing the bot)
 process.on('unhandledRejection', (reason: unknown) => {
@@ -70,6 +71,7 @@ async function main(): Promise<void> {
 
     try {
       rateLimiter.destroy();
+      knowledgeSyncService.stopScheduler();
 
       if (httpServer) {
         httpServer.close();
@@ -90,6 +92,9 @@ async function main(): Promise<void> {
   process.once('SIGINT', () => gracefulShutdown('SIGINT'));
   process.once('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
+  // Start Knowledge Synchronization Scheduler (runs in background with unref timer)
+  knowledgeSyncService.startScheduler();
+
   // Create Express app for health checks and/or webhooks (crucial for Render / Cloud hosting)
   const app = express();
 
@@ -100,11 +105,18 @@ async function main(): Promise<void> {
 
   // Health check endpoint (for cloud health monitoring & keep-awake pingers)
   app.all('/health', (_req: Request, res: Response) => {
+    const syncStatus = knowledgeSyncService.getStatus();
     res.status(200).json({
       status: 'healthy',
       service: "Celia, your System & Group Management Admin",
       mode: env.botMode,
       uptimeSeconds: Math.floor(process.uptime()),
+      knowledgeSync: {
+        version: syncStatus.version,
+        lastSuccessfulSyncAt: syncStatus.lastSuccessfulSyncAt,
+        contentHash: syncStatus.contentHash ? syncStatus.contentHash.slice(0, 10) : null,
+        totalCharacters: syncStatus.totalCharacters,
+      },
     });
   });
 
