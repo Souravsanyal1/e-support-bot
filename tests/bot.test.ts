@@ -1080,9 +1080,16 @@ async function runTests() {
   markMessageAsProcessed(testMsgId);
   assert.strictEqual(isMessageAlreadyProcessed(testMsgId), true, 'Processed message must be detected as duplicate');
 
-  // Group filter check
+  // Group and private chat filter check
   assert.strictEqual(shouldModerateChat(-100123456789, true), true, 'Group chat should be moderated when enabled');
-  assert.strictEqual(shouldModerateChat(undefined, false), false, 'Private chat should not trigger group deletion');
+  assert.strictEqual(shouldModerateChat(undefined, false), true, 'Private chat should also be moderated to delete nude/adult photos');
+
+  // Verify vision safety refusal detector
+  const { isInappropriateResponse } = await import('../src/ai/vision');
+  assert.strictEqual(isInappropriateResponse("I'm unable to assist with that."), true, 'Must catch OpenAI refusal');
+  assert.strictEqual(isInappropriateResponse("I cannot assist with this image"), true, 'Must catch image refusal');
+  assert.strictEqual(isInappropriateResponse("[INAPPROPRIATE_CONTENT_DETECTED]"), true, 'Must catch tag');
+  assert.strictEqual(isInappropriateResponse("This is an Elite Force logo on a blue background."), false, 'Safe descriptions must not be flagged');
 
   // Moderation warning message check
   assert(env.imageModerationWarningMessage.includes('strictly prohibited'), 'Warning message must enforce community rules');

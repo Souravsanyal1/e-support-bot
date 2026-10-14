@@ -63,12 +63,12 @@ export function markMessageAsProcessed(messageId: number): void {
  */
 export function shouldModerateChat(chatId?: number, isGroup = true): boolean {
   if (!env.enableImageModeration) return false;
-  // If moderationGroupIds is specified, chat ID must be included
-  if (env.moderationGroupIds.size > 0) {
+  // If moderationGroupIds is specified and this is a group, chat ID must be included
+  if (isGroup && env.moderationGroupIds.size > 0) {
     return chatId !== undefined && env.moderationGroupIds.has(chatId);
   }
-  // Otherwise, default applies to group/channel chats
-  return isGroup;
+  // Moderation applies to all chats (groups, channels, and private DMs)
+  return true;
 }
 
 /**

@@ -490,39 +490,30 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
       if (moderationFlagged) {
         await deleteLoadingSticker(ctx, loadingStickerId);
-        if (isGroup) {
-          try {
-            await ctx.deleteMessage();
-            logger.info('Deleted inappropriate/nude photo in group chat', {
-              chatId: ctx.chat?.id,
-              messageId: ctx.message?.message_id,
-              fromUserId: ctx.from?.id,
-              reason: moderationReason,
-            });
-          } catch (delErr) {
-            logger.warn('Failed to delete inappropriate photo (missing bot admin Delete Messages permission)', {
-              error: delErr instanceof Error ? delErr.message : String(delErr),
-            });
-          }
-
-          // Requirement 18.B: Send exact warning message to the same group
-          await safeReply(
-            ctx,
-            env.imageModerationWarningMessage,
-            { replyToMessage: false }
-          );
-        } else {
-          await safeReply(
-            ctx,
-            env.imageModerationWarningMessage,
-            { replyToMessage: false }
-          );
+        try {
+          await ctx.deleteMessage();
+          logger.info('Deleted inappropriate/nude photo (Step 1: Moderation)', {
+            chatId: ctx.chat?.id,
+            messageId: ctx.message?.message_id,
+            fromUserId: ctx.from?.id,
+            reason: moderationReason,
+          });
+        } catch (delErr) {
+          logger.warn('Failed to delete inappropriate photo', {
+            error: delErr instanceof Error ? delErr.message : String(delErr),
+          });
         }
+
+        await safeReply(
+          ctx,
+          env.imageModerationWarningMessage,
+          { replyToMessage: false }
+        );
         return;
       }
     }
 
-    // ── Step 2: Vision Analysis (only reached for clean/safe images) ────────
+    // ── Step 2: Vision Analysis ─────────────────────────────────────────────
     const contextInfo = caption
       ? getRelevantOfficialChannelContext(caption) || undefined
       : undefined;
@@ -533,6 +524,30 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
       userPrompt: caption,
       contextInfo,
     });
+
+    // If caught as inappropriate/nude by multimodal vision or safety filter:
+    if (analysisResult.isInappropriate) {
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      try {
+        await ctx.deleteMessage();
+        logger.info('Deleted inappropriate/nude photo (Step 2: Vision safety refusal caught)', {
+          chatId: ctx.chat?.id,
+          messageId: ctx.message?.message_id,
+          fromUserId: ctx.from?.id,
+        });
+      } catch (delErr) {
+        logger.warn('Failed to delete inappropriate photo', {
+          error: delErr instanceof Error ? delErr.message : String(delErr),
+        });
+      }
+
+      await safeReply(
+        ctx,
+        env.imageModerationWarningMessage,
+        { replyToMessage: false }
+      );
+      return;
+    }
 
     // Ensure the animated loading sticker is visible for at least 3000ms
     const elapsed = Date.now() - startTime;

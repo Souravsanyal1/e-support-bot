@@ -16,19 +16,27 @@ export interface AnalyzeImageOptions {
 export interface VisionAnalysisResult {
   /** AI-generated analysis text for the image */
   text: string;
-  /**
-   * Deprecated — always false now. NSFW detection is handled upstream
-   * by OpenAI omni-moderation-latest in moderation.ts before vision is called.
-   * Kept for backward compatibility with tests.
-   */
-  isInappropriate: false;
+  /** Whether the image was flagged as inappropriate, adult, or nude */
+  isInappropriate: boolean;
+}
+
+export function isInappropriateResponse(text: string): boolean {
+  const lower = text.toLowerCase().trim();
+  if (lower.includes(INAPPROPRIATE_CONTENT_TAG.toLowerCase())) return true;
+  if (lower.includes("unable to assist with that")) return true;
+  if (lower.includes("cannot assist with that")) return true;
+  if (lower.includes("cannot assist with this image")) return true;
+  if (lower.includes("can't help with that")) return true;
+  if (lower.includes("cannot fulfill this request")) return true;
+  if (lower.includes("violates our safety policy")) return true;
+  if (lower.includes("violates our usage policy")) return true;
+  return false;
 }
 
 /**
  * Builds the multimodal vision system prompt for image analysis.
- * NSFW / content moderation is handled separately by OpenAI omni-moderation-latest
- * BEFORE this function is ever called. By the time this prompt runs, the image
- * has already been cleared as safe.
+ * Incorporates strict safety moderation to prevent processing or describing
+ * nude, sexually explicit, adult, or vulgar images.
  */
 export function buildVisionSystemPrompt(): string {
   return `
@@ -52,6 +60,7 @@ RESPONSE RULES
 - Reply in English only.
 - Be concise, accurate, and helpful.
 - If the image is unclear or too small to analyze: say so and ask for a clearer version.
+- If the image contains adult material, exposed body parts, or sexually explicit content, respond only with: ${INAPPROPRIATE_CONTENT_TAG}
 `.trim();
 }
 
@@ -230,18 +239,26 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
   }
 
   try {
+    let rawText = '';
     try {
-      const text = await tryVision(primary);
+      rawText = await tryVision(primary);
       logger.info('Primary vision provider succeeded', { provider: primary });
-      return { text, isInappropriate: false };
     } catch (primaryErr) {
       logger.warn(`Primary vision provider (${primary}) failed, falling back to ${secondary}`, {
         error: primaryErr instanceof Error ? primaryErr.message : String(primaryErr),
       });
-      const text = await tryVision(secondary);
+      rawText = await tryVision(secondary);
       logger.info('Secondary vision provider succeeded', { provider: secondary });
-      return { text, isInappropriate: false };
     }
+
+    if (isInappropriateResponse(rawText)) {
+      logger.warn('Vision analysis flagged image as inappropriate/adult or triggered safety refusal', {
+        snippet: rawText.slice(0, 100),
+      });
+      return { text: '', isInappropriate: true };
+    }
+
+    return { text: rawText, isInappropriate: false };
   } catch (err) {
     logger.error('All vision providers failed for image analysis', err);
     throw new Error('Unable to analyze image at this time due to temporary AI vision unavailability.');
