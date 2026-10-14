@@ -13,6 +13,7 @@ import {
   handleAboutCommand,
   handleAskCommand,
   handleTextMessage,
+  handlePhotoMessage,
   handleChannelPost,
   handleNewChatMembers,
 } from '../handlers/userHandler';
@@ -21,6 +22,9 @@ import {
   handleAdminReload,
   handleAdminBroadcast,
   handleAdminUsers,
+  handleAdminOff,
+  handleAdminOn,
+  handleAdminTime,
 } from '../handlers/adminHandler';
 
 /**
@@ -75,11 +79,17 @@ export function createBot(): Bot {
   bot.command('reload', requireAdmin, handleAdminReload);
   bot.command('broadcast', requireAdmin, handleAdminBroadcast);
   bot.command('users', requireAdmin, handleAdminUsers);
+  bot.command('off', requireAdmin, handleAdminOff);
+  bot.command('on', requireAdmin, handleAdminOn);
+  bot.command('time', requireAdmin, handleAdminTime);
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);
 
-  // 6. Community Group Member Updates (Welcome message when bot joins)
+  // 6. User Photo & Image Analysis
+  bot.on('message:photo', handlePhotoMessage);
+
+  // 7. Community Group Member Updates (Welcome message when bot joins)
   bot.on('message:new_chat_members', handleNewChatMembers);
 
   return bot;

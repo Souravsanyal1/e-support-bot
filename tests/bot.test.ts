@@ -202,81 +202,150 @@ async function runTests() {
   const english6 = checkMessageLanguage('gm guys');
   assert.strictEqual(english6.isEnglish, true, 'English crypto slang must pass');
 
-  // 9e. Non-English Content Removal & Extraction Pipeline
+  // 9d. Valid English (with names, URLs, technical terms, code snippets, emojis, tickers)
+  const english7 = checkMessageLanguage('Who is Prince Sourav and Krit? Check https://t.me/Elite_Force_Official $EFORCE 🧡 🚀');
+  assert.strictEqual(english7.isEnglish, true, 'English with project founder names, URLs, tickers, and emojis must pass');
+
+  const english8 = checkMessageLanguage('```const x = 10;``` How do I test the smart contract?');
+  assert.strictEqual(english8.isEnglish, true, 'English with code snippet must pass');
+
+  // 9e. Safe fallback for ambiguous short messages & technical jargon (must not be deleted)
+  const short1 = checkMessageLanguage('RPC');
+  assert.strictEqual(short1.isEnglish, true, 'Short technical acronym RPC must pass safe fallback');
+
+  const short2 = checkMessageLanguage('slippage');
+  assert.strictEqual(short2.isEnglish, true, 'Short technical word slippage must pass safe fallback');
+
+  const short3 = checkMessageLanguage('audit');
+  assert.strictEqual(short3.isEnglish, true, 'Short technical word audit must pass safe fallback');
+
+  // 9f. Non-English & Mixed Language Extraction Pipeline
   const { processAndFilterMessageLanguage } = await import('../src/utils/languageDetector');
 
-  // Mixed message: English question with Banglish words appended
+  // Mixed message: English question with Banglish words appended -> REJECTED (isAllowed: false)
   const mixed1 = processAndFilterMessageLanguage('When will the token launch kobe hobe bhai?');
-  assert.strictEqual(mixed1.hasEnglish, true, 'Must detect remaining English text');
-  assert.strictEqual(mixed1.hasNonEnglish, true, 'Must detect presence of non-English content');
-  assert(mixed1.cleanedEnglishText.includes('When will the token launch'), 'Must preserve English question');
-  assert(!mixed1.cleanedEnglishText.includes('kobe'), 'Must strip Banglish "kobe"');
-  assert(!mixed1.cleanedEnglishText.includes('hobe'), 'Must strip Banglish "hobe"');
-  assert(!mixed1.cleanedEnglishText.includes('bhai'), 'Must strip Banglish "bhai"');
+  assert.strictEqual(mixed1.hasEnglish, true, 'Must detect presence of English text');
+  assert.strictEqual(mixed1.hasNonEnglish, true, 'Must detect presence of Banglish content');
+  assert.strictEqual(mixed1.hasSubstantialNonEnglish, true, 'Must flag as substantial non-English');
+  assert.strictEqual(mixed1.isAllowed, false, 'Mixed message with substantial Banglish must be rejected');
 
-  // Mixed message: English question with Bengali script appended
+  // Mixed message: English question with Bengali script appended -> REJECTED (isAllowed: false)
   const mixed2 = processAndFilterMessageLanguage('What is Elite Force? ঠিকানা দিন');
-  assert.strictEqual(mixed2.hasEnglish, true, 'Must detect remaining English text');
-  assert.strictEqual(mixed2.hasNonEnglish, true, 'Must detect non-Latin script');
-  assert.strictEqual(mixed2.cleanedEnglishText, 'What is Elite Force?', 'Must cleanly strip Bengali Unicode script');
+  assert.strictEqual(mixed2.hasEnglish, true, 'Must detect English question');
+  assert.strictEqual(mixed2.hasNonEnglish, true, 'Must detect non-Latin Bengali script');
+  assert.strictEqual(mixed2.isAllowed, false, 'Mixed message with Bengali script must be rejected');
 
-  // Pure non-English message
+  // Mixed message with Arabic script -> REJECTED
+  const mixed3 = processAndFilterMessageLanguage('Can you help me? مرحبا كيف الحال');
+  assert.strictEqual(mixed3.hasNonEnglish, true, 'Must detect Arabic script');
+  assert.strictEqual(mixed3.isAllowed, false, 'Mixed message with Arabic script must be rejected');
+
+  // Pure non-English message -> REJECTED
   const pureNonEn = processAndFilterMessageLanguage('kobe launch hobe vai');
   assert.strictEqual(pureNonEn.hasEnglish, false, 'Must identify pure non-English without viable English text');
   assert.strictEqual(pureNonEn.hasNonEnglish, true, 'Must flag as non-English');
+  assert.strictEqual(pureNonEn.isAllowed, false, 'Pure non-English must be rejected');
 
-  // Clean English message
+  // Clean English message -> ALLOWED
   const pureEn = processAndFilterMessageLanguage('How do I buy E-FORCE tokens on BSC?');
   assert.strictEqual(pureEn.hasEnglish, true, 'Clean English must pass');
   assert.strictEqual(pureEn.hasNonEnglish, false, 'Clean English must have no non-English content');
+  assert.strictEqual(pureEn.isAllowed, true, 'Clean English must be allowed');
   assert.strictEqual(pureEn.cleanedEnglishText, 'How do I buy E-FORCE tokens on BSC?', 'Must preserve text untouched');
 
-  console.log('✓ Language detector & non-English removal pipeline passed');
+  console.log('✓ Language detector & mixed language rejection pipeline passed');
 
-  // Test 10: Language Filter Middleware
+  // Test 10: Language Filter Middleware (Group Deletion vs Private Chat Rejection)
   console.log('Testing Language Filter Middleware...');
   const { languageFilterMiddleware } = await import('../src/middleware/languageFilter');
 
-  let deletedMessage = false;
-  let nextCalled = false;
-  let warningReplied = false;
-  let autoDeleteCalled = false;
+  // 10a. Group Chat: non-English message must be deleted and warning sent
+  let groupDeleted = false;
+  let groupNextCalled = false;
+  let groupWarningReplied = false;
 
-  const mockNonEnglishCtx = {
+  const mockGroupCtx = {
     message: { text: 'kobe launch hobe bhai?', message_id: 101 },
-    chat: { id: 12345 },
+    chat: { id: 12345, type: 'group' },
     from: { id: 54321 },
     deleteMessage: async () => {
-      deletedMessage = true;
+      groupDeleted = true;
       return true;
     },
     reply: async () => {
-      warningReplied = true;
+      groupWarningReplied = true;
       return { message_id: 888, chat: { id: 12345 } };
     },
     api: {
-      deleteMessage: async () => {
-        autoDeleteCalled = true;
-        return true;
-      },
+      deleteMessage: async () => true,
     },
   } as unknown as Context;
 
-  await languageFilterMiddleware(mockNonEnglishCtx, async () => {
-    nextCalled = true;
+  await languageFilterMiddleware(mockGroupCtx, async () => {
+    groupNextCalled = true;
   });
 
-  assert.strictEqual(deletedMessage, true, 'Middleware must delete non-English/Banglish message');
-  assert.strictEqual(warningReplied, true, 'Middleware must reply with English-only warning notice');
-  assert.strictEqual(nextCalled, false, 'Middleware must NOT call next() for non-English message (no reply)');
+  assert.strictEqual(groupDeleted, true, 'In groups, middleware must delete non-English message');
+  assert.strictEqual(groupWarningReplied, true, 'In groups, middleware must reply with warning notice');
+  assert.strictEqual(groupNextCalled, false, 'Middleware must NOT call next() for non-English message');
 
-  // Test English message through middleware
+  // 10b. Private Chat: non-English message must NOT attempt deleteMessage(), warning sent, next() blocked
+  let privateDeletedAttempted = false;
+  let privateNextCalled = false;
+  let privateWarningReplied = false;
+
+  const mockPrivateCtx = {
+    message: { text: 'kobe launch hobe bhai?', message_id: 102 },
+    chat: { id: 54321, type: 'private' },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      privateDeletedAttempted = true;
+      throw new Error("Bad Request: message can't be deleted in private chat");
+    },
+    reply: async () => {
+      privateWarningReplied = true;
+      return { message_id: 889, chat: { id: 54321 } };
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockPrivateCtx, async () => {
+    privateNextCalled = true;
+  });
+
+  assert.strictEqual(privateDeletedAttempted, false, 'In private chats, middleware must NOT attempt deleteMessage()');
+  assert.strictEqual(privateWarningReplied, true, 'In private chats, middleware must send warning reply');
+  assert.strictEqual(privateNextCalled, false, 'In private chats, middleware must NOT call next()');
+
+  // 10c. Mixed English/Banglish message through middleware must be rejected
+  let mixedGroupDeleted = false;
+  let mixedNextCalled = false;
+
+  const mockMixedGroupCtx = {
+    message: { text: 'Tell me about the project kobe launch hobe bhai', message_id: 103 },
+    chat: { id: 12345, type: 'supergroup' },
+    from: { id: 54321 },
+    deleteMessage: async () => {
+      mixedGroupDeleted = true;
+      return true;
+    },
+    reply: async () => ({ message_id: 890, chat: { id: 12345 } }),
+    api: { deleteMessage: async () => true },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockMixedGroupCtx, async () => {
+    mixedNextCalled = true;
+  });
+
+  assert.strictEqual(mixedGroupDeleted, true, 'Middleware must delete mixed message with substantial non-English in groups');
+  assert.strictEqual(mixedNextCalled, false, 'Middleware must NOT call next() for mixed message with substantial non-English');
+
+  // 10d. Test English message through middleware passes cleanly
   let enDeleted = false;
   let enNextCalled = false;
 
   const mockEnglishCtx = {
-    message: { text: 'When is the official launch?', message_id: 102 },
-    chat: { id: 12345 },
+    message: { text: 'When is the official launch?', message_id: 104 },
+    chat: { id: 12345, type: 'group' },
     from: { id: 54321 },
     deleteMessage: async () => {
       enDeleted = true;
@@ -291,36 +360,19 @@ async function runTests() {
   assert.strictEqual(enDeleted, false, 'Middleware must NOT delete English message');
   assert.strictEqual(enNextCalled, true, 'Middleware MUST call next() for English message');
 
-  // Test Mixed Message through middleware (Non-English stripped, English proceeds)
-  let mixedNextCalled = false;
-  const mockMixedCtx = {
-    message: { text: 'Tell me about the project kobe launch hobe bhai', message_id: 103 },
-    chat: { id: 12345 },
-    from: { id: 54321 },
-    deleteMessage: async () => true,
-  } as unknown as Context;
-
-  await languageFilterMiddleware(mockMixedCtx, async () => {
-    mixedNextCalled = true;
-  });
-
-  assert.strictEqual(mixedNextCalled, true, 'Middleware must call next() for mixed message after removing non-English');
-  assert(mockMixedCtx.message?.text?.includes('Tell me about the project'), 'Must preserve English portion');
-  assert(!mockMixedCtx.message?.text?.includes('kobe'), 'Must remove Banglish portion from message text');
-
-  // Test /ask command in Banglish through middleware
+  // 10e. Test /ask command in Banglish through middleware
   let askDeleted = false;
   let askNextCalled = false;
 
   const mockAskBanglishCtx = {
-    message: { text: '/ask kemon acho vai', message_id: 104 },
-    chat: { id: 12345 },
+    message: { text: '/ask kemon acho vai', message_id: 105 },
+    chat: { id: 12345, type: 'group' },
     from: { id: 54321 },
     deleteMessage: async () => {
       askDeleted = true;
       return true;
     },
-    reply: async () => ({ message_id: 889, chat: { id: 12345 } }),
+    reply: async () => ({ message_id: 891, chat: { id: 12345 } }),
     api: { deleteMessage: async () => true },
   } as unknown as Context;
 
@@ -331,13 +383,13 @@ async function runTests() {
   assert.strictEqual(askDeleted, true, 'Middleware must delete pure Banglish /ask command');
   assert.strictEqual(askNextCalled, false, 'Middleware must NOT call next() for Banglish /ask (no reply)');
 
-  // Test /ask command in English through middleware
+  // 10f. Test /ask command in English through middleware
   let askEnDeleted = false;
   let askEnNextCalled = false;
 
   const mockAskEnCtx = {
-    message: { text: '/ask What is Elite Force?', message_id: 105 },
-    chat: { id: 12345 },
+    message: { text: '/ask What is Elite Force?', message_id: 106 },
+    chat: { id: 12345, type: 'group' },
     from: { id: 54321 },
     deleteMessage: async () => {
       askEnDeleted = true;
@@ -538,6 +590,279 @@ async function runTests() {
   assert.strictEqual(cleanNextCalled, true, 'Middleware must call next() for clean message');
   console.log('✓ Bad words filter middleware passed (deletes abusive English messages, passes clean)');
 
+  // Test 13: Secure Admin Permission Guard
+  console.log('Testing Secure Admin Permission Guard...');
+  const { requireAdmin, isAdmin } = await import('../src/middleware/adminAuth');
+  const { env: currentEnv } = await import('../src/config/env.config');
+
+  // Add dummy test admin ID for validation
+  const testAdminId = 77712345;
+  (currentEnv.adminUserIds as Set<number>).add(testAdminId);
+
+  assert.strictEqual(isAdmin(testAdminId), true, 'Configured admin ID must pass isAdmin check');
+  assert.strictEqual(isAdmin(99999999), false, 'Non-admin ID must fail isAdmin check');
+  assert.strictEqual(isAdmin(undefined), false, 'Undefined ID must fail isAdmin check');
+
+  let adminNextCalled = false;
+  const mockAdminCtx = {
+    from: { id: testAdminId },
+    chat: { id: 111 },
+    reply: async () => true,
+  } as unknown as Context;
+
+  await requireAdmin(mockAdminCtx, async () => {
+    adminNextCalled = true;
+  });
+  assert.strictEqual(adminNextCalled, true, 'Authorized admin must pass through requireAdmin');
+
+  let unauthorizedRepliedText = '';
+  let unauthNextCalled = false;
+  const mockUnauthCtx = {
+    from: { id: 88888888 },
+    chat: { id: 222 },
+    reply: async (msg: string) => {
+      unauthorizedRepliedText = msg;
+      return true;
+    },
+  } as unknown as Context;
+
+  await requireAdmin(mockUnauthCtx, async () => {
+    unauthNextCalled = true;
+  });
+  assert.strictEqual(unauthNextCalled, false, 'Unauthorized user must NOT reach next handler');
+  assert(
+    unauthorizedRepliedText.includes('Unknown command'),
+    'Unauthorized user must receive generic Unknown command message to prevent command disclosure'
+  );
+  console.log('✓ Secure admin permission guard verified');
+
+  // Test 14: Bot Shutdown, Permanent Shutdown, and Manual Reactivation
+  console.log('Testing Bot Shutdown, Persistence & Reactivation State...');
+  const path = await import('path');
+  const fs = await import('fs');
+  const { BotStateManager } = await import('../src/bot/state');
+
+  const testStateFile = path.resolve(process.cwd(), 'data', 'test_bot_state.json');
+  if (fs.existsSync(testStateFile)) {
+    fs.unlinkSync(testStateFile);
+  }
+
+  const testStateManager = BotStateManager.resetInstanceForTesting(testStateFile);
+  assert.strictEqual(testStateManager.isUserFacingActive(), true, 'Bot should start in active state');
+
+  // Temporary shutdown
+  testStateManager.turnOff({ permanent: false, disabledBy: testAdminId });
+  assert.strictEqual(testStateManager.isUserFacingActive(), false, 'Bot should be disabled after turnOff');
+  assert.strictEqual(testStateManager.getState().status, 'temporary_disabled');
+
+  // Permanent shutdown
+  testStateManager.turnOff({ permanent: true, disabledBy: testAdminId });
+  assert.strictEqual(testStateManager.getState().status, 'permanently_disabled');
+
+  // Assert state was written to disk
+  assert(fs.existsSync(testStateFile), 'State file must be persisted to disk');
+  const diskState = JSON.parse(fs.readFileSync(testStateFile, 'utf-8'));
+  assert.strictEqual(diskState.status, 'permanently_disabled', 'Disk file must record permanently_disabled');
+
+  // Reactivate
+  testStateManager.turnOn(testAdminId);
+  assert.strictEqual(testStateManager.isUserFacingActive(), true, 'Bot must be active after turnOn');
+  assert.strictEqual(testStateManager.getState().status, 'active');
+
+  console.log('✓ Bot shutdown, persistence, and reactivation state verified');
+
+  // Test 15: Smart Natural Language Timer & Timezone Parser (/time)
+  console.log('Testing Smart Timer Natural Language Parser & Timezone Logic...');
+  const { parseTimeCommand, formatTimerConfirmation, formatTimeStatus } = await import('../src/utils/timeParser');
+
+  // 15a. Relative durations
+  const dur2m = parseTimeCommand('2 minutes');
+  assert.strictEqual(dur2m.type, 'duration');
+  if (dur2m.type === 'duration') {
+    assert.strictEqual(dur2m.durationMinutes, 2);
+  }
+
+  const dur30m = parseTimeCommand('30 minutes');
+  assert.strictEqual(dur30m.type, 'duration');
+  if (dur30m.type === 'duration') {
+    assert.strictEqual(dur30m.durationMinutes, 30);
+  }
+
+  const dur2h = parseTimeCommand('2 hours');
+  assert.strictEqual(dur2h.type, 'duration');
+  if (dur2h.type === 'duration') {
+    assert.strictEqual(dur2h.durationMinutes, 120);
+  }
+
+  const durOff2h = parseTimeCommand('off 2 hours');
+  assert.strictEqual(durOff2h.type, 'duration');
+  if (durOff2h.type === 'duration') {
+    assert.strictEqual(durOff2h.durationMinutes, 120);
+  }
+
+  // 15b. Ambiguity check (must ask for clarification without guessing)
+  const ambigMorning = parseTimeCommand('tomorrow morning');
+  assert.strictEqual(ambigMorning.type, 'ambiguous', 'tomorrow morning must be flagged as ambiguous');
+
+  const ambigEvening = parseTimeCommand('evening');
+  assert.strictEqual(ambigEvening.type, 'ambiguous', 'evening must be flagged as ambiguous');
+
+  // 15c. Explicit clock times in Asia/Dhaka
+  const clock9am = parseTimeCommand('9:00 AM', 'Asia/Dhaka');
+  assert.strictEqual(clock9am.type, 'specific_time');
+
+  const clockTomorrow9am = parseTimeCommand('tomorrow 9:00 AM', 'Asia/Dhaka');
+  assert.strictEqual(clockTomorrow9am.type, 'specific_time');
+
+  // 15d. Subcommands
+  const statusCmd = parseTimeCommand('status');
+  assert.strictEqual(statusCmd.type, 'status');
+
+  const cancelCmd = parseTimeCommand('cancel');
+  assert.strictEqual(cancelCmd.type, 'cancel');
+
+  // 15e. Format messages
+  const dummyState = {
+    status: 'temporary_disabled' as const,
+    reactivateAt: new Date(Date.now() + 120 * 60 * 1000).toISOString(),
+    disabledAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  const confirmMsg = formatTimerConfirmation(dummyState, 'Asia/Dhaka');
+  assert(confirmMsg.includes('Scheduled Reactivation Confirmed'), 'Must include confirmation header');
+  assert(confirmMsg.includes('Asia/Dhaka'), 'Must include timezone');
+
+  const statusMsg = formatTimeStatus(dummyState, 'Asia/Dhaka');
+  assert(statusMsg.includes('Temporarily Disabled'), 'Status message must report temporary disabled');
+
+  console.log('✓ Smart timer parser, ambiguity detection, and formatting verified');
+
+  // Test 16: Timer Expiration, Auto-Reactivation, and Server Restart Recovery
+  console.log('Testing Timer Expiration, Auto-Reactivation & Restart Recovery...');
+
+  // 16a. Short auto-reactivation timer (100ms)
+  let callbackFired = false;
+  testStateManager.setOnReactivateCallback(() => {
+    callbackFired = true;
+  });
+
+  const future100ms = new Date(Date.now() + 80);
+  testStateManager.turnOff({
+    permanent: false,
+    reactivateAt: future100ms,
+    durationMinutes: 1,
+    disabledBy: testAdminId,
+  });
+  assert.strictEqual(testStateManager.isUserFacingActive(), false, 'Must be disabled while timer runs');
+
+  await new Promise((resolve) => setTimeout(resolve, 140));
+  assert.strictEqual(testStateManager.isUserFacingActive(), true, 'Must auto-reactivate when timer expires');
+  assert.strictEqual(callbackFired, true, 'Reactivation callback must have fired');
+
+  // 16b. Recovery of expired timer from disk on server restart
+  const expiredState = {
+    status: 'temporary_disabled',
+    disabledAt: new Date(Date.now() - 3600000).toISOString(),
+    reactivateAt: new Date(Date.now() - 1800000).toISOString(), // 30m ago
+    updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  };
+  fs.writeFileSync(testStateFile, JSON.stringify(expiredState, null, 2), 'utf-8');
+
+  // Simulate reboot
+  const rebootManager = BotStateManager.resetInstanceForTesting(testStateFile);
+  assert.strictEqual(
+    rebootManager.isUserFacingActive(),
+    true,
+    'Reboot manager must automatically reactivate when scheduled timer already passed'
+  );
+  assert.strictEqual(rebootManager.getState().status, 'active');
+
+  // 16c. Recovery of active pending timer from disk on server restart
+  const pendingFutureDate = new Date(Date.now() + 100);
+  const futureState = {
+    status: 'temporary_disabled',
+    disabledAt: new Date().toISOString(),
+    reactivateAt: pendingFutureDate.toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  fs.writeFileSync(testStateFile, JSON.stringify(futureState, null, 2), 'utf-8');
+
+  const rebootPending = BotStateManager.resetInstanceForTesting(testStateFile);
+  assert.strictEqual(rebootPending.isUserFacingActive(), false, 'Reboot pending must restore disabled status');
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.strictEqual(rebootPending.isUserFacingActive(), true, 'Restored timer must fire and reactivate');
+
+  // Cleanup test state file
+  if (fs.existsSync(testStateFile)) {
+    fs.unlinkSync(testStateFile);
+  }
+  // Restore main state manager singleton
+  BotStateManager.resetInstanceForTesting();
+  console.log('✓ Timer expiration, auto-reactivation, and restart recovery verified');
+
+  // Test 17: User Handlers & Vision Image Analysis Integration
+  console.log('Testing User Handlers & Vision Image Analysis Integration...');
+  const { handlePhotoMessage } = await import('../src/handlers/userHandler');
+  const { botStateManager: activeManager } = await import('../src/bot/state');
+
+  // 17a. While bot is disabled, normal user photo is silently ignored
+  activeManager.turnOff({ permanent: true });
+
+  let photoProcessed = false;
+  const mockUserPhotoCtx = {
+    from: { id: 123456 }, // Regular user
+    message: {
+      photo: [{ file_id: 'photo_abc', file_size: 50000 }],
+      caption: 'What is this error?',
+    },
+    reply: async () => {
+      photoProcessed = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await handlePhotoMessage(mockUserPhotoCtx);
+  assert.strictEqual(photoProcessed, false, 'User photo must be silently ignored when bot is disabled');
+
+  // 17b. Re-enable bot for remaining tests
+  activeManager.turnOn();
+
+  // 17c. Oversized photo (>10MB) is politely rejected
+  let oversizedReply = '';
+  const mockOversizedCtx = {
+    from: { id: 123456 },
+    message: {
+      photo: [{ file_id: 'photo_big', file_size: 15 * 1024 * 1024 }], // 15MB
+      caption: 'Big screenshot',
+    },
+    reply: async (msg: string) => {
+      oversizedReply = msg;
+      return true;
+    },
+  } as unknown as Context;
+
+  await handlePhotoMessage(mockOversizedCtx);
+  assert(oversizedReply.includes('too large'), 'Oversized photo must be rejected with size warning');
+
+  // 17d. Photo with non-English caption is deleted/rejected per language guidelines
+  let captionDeleted = false;
+  const mockNonEnglishPhotoCtx = {
+    from: { id: 123456 },
+    message: {
+      photo: [{ file_id: 'photo_xyz', file_size: 50000 }],
+      caption: 'kobe launch hobe bhai?',
+    },
+    deleteMessage: async () => {
+      captionDeleted = true;
+      return true;
+    },
+  } as unknown as Context;
+
+  await handlePhotoMessage(mockNonEnglishPhotoCtx);
+  assert.strictEqual(captionDeleted, true, 'Photo with non-English caption must be rejected per language policy');
+
+  console.log('✓ User handlers & vision image analysis integration verified');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();
@@ -549,3 +874,4 @@ runTests().catch((err) => {
   console.error('Test suite failed:', err);
   process.exit(1);
 });
+

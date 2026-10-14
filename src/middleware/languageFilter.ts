@@ -1,41 +1,52 @@
 import { Context, NextFunction } from 'grammy';
 import { env } from '../config/env.config';
+import { LANGUAGE_POLICY } from '../config/bot.config';
 import { logger } from '../utils/logger';
-import { processAndFilterMessageLanguage } from '../utils/languageDetector';
+import { checkMessageLanguage, processAndFilterMessageLanguage } from '../utils/languageDetector';
 import { scheduleAutoDelete } from '../utils/telegram';
 
 /**
  * Global Language Moderation Middleware.
  *
  * Rules:
- * - If a message is sent in Bengali (Bangla script) or Banglish (Romanized Bengali):
- *   -> Instantly removes / deletes the message from the chat.
- *   -> Completely suppresses any reply (no answer or error sent).
- * - If a message is in any language other than English (non-English):
- *   -> Removes / deletes the message from the chat.
- *   -> Completely suppresses any reply.
- * - Only clear, natural English messages are permitted to proceed.
+ * 1. Checks every incoming text message, edited message, and photo caption.
+ * 2. Strictly permits English only. Rejects Bengali, Banglish, Hindi, Arabic,
+ *    and other non-English languages.
+ * 3. Handles mixed-language messages: if substantial non-English content is present,
+ *    it is rejected.
+ * 4. Telegram Groups: Deletes non-English message if bot has permissions; handles
+ *    errors gracefully if deletion fails. Sends a 2-minute auto-deleted warning notice.
+ * 5. Private Chats: Telegram does not allow bots to delete user messages in DMs.
+ *    Rejects the request and responds with a warning notice without attempting deletion.
+ * 6. Never forwards rejected messages to Gemini or OpenRouter fallback.
  */
 export async function languageFilterMiddleware(
   ctx: Context,
   next: NextFunction
 ): Promise<void> {
+  // If language moderation policy is globally disabled in config, pass through
+  if (!LANGUAGE_POLICY.enabled) {
+    await next();
+    return;
+  }
+
   // 1. Channel post updates are read-only official announcements synced to knowledge
   if (ctx.channelPost || ctx.editedChannelPost) {
     await next();
     return;
   }
 
-  const message = ctx.message;
+  // 2. Extract message from standard or edited message update
+  const message = ctx.message || ctx.editedMessage;
   const rawText = message?.text || message?.caption;
 
-  // 2. If update has no text/caption (e.g. member joins, service updates), pass through
+  // If update has no text/caption (e.g. service update, sticker), pass through
   if (!rawText) {
     await next();
     return;
   }
 
-  // 3. Admin exemption for admin commands
+  // 3. Admin exemption: Authorized admin commands bypass language moderation
   const userId = ctx.from?.id;
   if (userId && env.adminUserIds.has(userId) && rawText.startsWith('/')) {
     await next();
@@ -50,7 +61,7 @@ export async function languageFilterMiddleware(
     return;
   }
 
-  // 5. Determine text to evaluate
+  // 5. Check if this is an /ask command
   const askMatch = trimmed.match(/^\/ask(@\w+)?(?:\s+(.*))?$/i);
   const isAskCommand = Boolean(askMatch);
   let textToCheck = trimmed;
@@ -58,77 +69,80 @@ export async function languageFilterMiddleware(
   if (isAskCommand) {
     const query = askMatch?.[2]?.trim() || '';
     if (!query) {
-      // Empty /ask command -> pass through to show usage instructions
+      // Empty /ask command -> pass through to user handler for usage help
       await next();
       return;
     }
     textToCheck = query;
   }
 
-  // 6. Processing Flow:
-  // 1. Detect language -> 2. Remove non-English content -> 3. Process remaining English text -> 4. Respond only in English
+  // 6. Language Detection and Validation
+  const langCheck = checkMessageLanguage(textToCheck);
   const processed = processAndFilterMessageLanguage(textToCheck);
 
-  if (processed.hasNonEnglish && processed.hasEnglish) {
-    // Mixed message: Non-English content stripped, remaining English text preserved
-    logger.info('Stripped non-English content from mixed message, preserving remaining English text', {
+  // If detected as non-English or contains substantial non-English (including mixed)
+  const isRejected = !langCheck.isEnglish || !processed.isAllowed;
+
+  if (isRejected) {
+    const isPrivate = ctx.chat?.type === 'private';
+    const detectedLangs =
+      processed.detectedNonEnglishLanguages.length > 0
+        ? processed.detectedNonEnglishLanguages
+        : [langCheck.language];
+
+    logger.info('Moderating non-English message (rejecting without AI processing)', {
       chatId: ctx.chat?.id,
+      chatType: ctx.chat?.type,
       messageId: ctx.msg?.message_id,
       fromUserId: ctx.from?.id,
-      removedLanguages: processed.detectedNonEnglishLanguages,
-      removedFragments: processed.removedContent,
-      cleanedEnglishText: processed.cleanedEnglishText,
-    });
-
-    // Update message text in-place with the clean English content
-    const updatedContent = isAskCommand
-      ? `/ask ${processed.cleanedEnglishText}`
-      : processed.cleanedEnglishText;
-
-    if (message.text) message.text = updatedContent;
-    if (message.caption) message.caption = updatedContent;
-
-    await next();
-    return;
-  }
-
-  if (!processed.hasEnglish) {
-    // Purely non-English message: Do not process content; send English-only notification & delete
-    logger.info('Moderating pure non-English message (deleting and suppressing non-English response)', {
-      chatId: ctx.chat?.id,
-      messageId: ctx.msg?.message_id,
-      fromUserId: ctx.from?.id,
-      detectedLanguages: processed.detectedNonEnglishLanguages,
+      detectedLanguages: detectedLangs,
+      isMixed: langCheck.isMixed || processed.isMixed,
+      reason: langCheck.reason || processed.reason,
       snippet: textToCheck.slice(0, 60),
     });
 
-    // Delete the incoming non-English message from Telegram
-    try {
-      await ctx.deleteMessage();
-    } catch (deleteError) {
-      logger.warn('Failed to delete non-English message (bot may lack delete permissions in group)', {
-        chatId: ctx.chat?.id,
-        messageId: ctx.msg?.message_id,
-        error: deleteError instanceof Error ? deleteError.message : String(deleteError),
-      });
-    }
-
-    // Notify that only English is supported, and auto-delete this warning after 2 minutes (120,000 ms)
-    try {
-      const warningMsg = await ctx.reply(
-        '⚠️ Only English is supported. Please ask your question in English.'
-      );
-      if (warningMsg?.message_id) {
-        scheduleAutoDelete(ctx, warningMsg.message_id, 2 * 60 * 1000);
+    // 7. Group vs Private Chat Moderation Handling
+    if (!isPrivate) {
+      // Group / Supergroup: Attempt message deletion if enabled
+      if (LANGUAGE_POLICY.deleteInGroups) {
+        try {
+          await ctx.deleteMessage();
+        } catch (deleteError) {
+          logger.warn('Failed to delete non-English message in group (bot may lack delete permissions)', {
+            chatId: ctx.chat?.id,
+            messageId: ctx.msg?.message_id,
+            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+          });
+        }
       }
-    } catch {
-      // Silently swallow reply errors
+
+      // Send temporary warning notice in group with auto-delete timer
+      if (LANGUAGE_POLICY.sendWarningInGroups) {
+        try {
+          const warningMsg = await ctx.reply(LANGUAGE_POLICY.warningMessage);
+          if (warningMsg?.message_id && LANGUAGE_POLICY.warningAutoDeleteMs > 0) {
+            scheduleAutoDelete(ctx, warningMsg.message_id, LANGUAGE_POLICY.warningAutoDeleteMs);
+          }
+        } catch {
+          // Silently swallow reply errors
+        }
+      }
+    } else {
+      // Private Chat: Bots cannot delete user messages in DMs on Telegram.
+      // Simply reject with warning without attempting deleteMessage().
+      if (LANGUAGE_POLICY.sendWarningInPrivate) {
+        try {
+          await ctx.reply(LANGUAGE_POLICY.warningMessage);
+        } catch {
+          // Silently swallow reply errors
+        }
+      }
     }
 
-    // Crucial: Do NOT answer non-English content, do NOT call next()
+    // Crucial: Reject immediately. Do NOT answer non-English content, do NOT call next()
     return;
   }
 
-  // Pure clean English message -> continue to next handlers
+  // Clean English message -> continue to next handlers
   await next();
 }

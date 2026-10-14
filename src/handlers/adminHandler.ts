@@ -2,6 +2,14 @@ import { Context } from 'grammy';
 import { env } from '../config/env.config';
 import { safeReply } from '../utils/telegram';
 import { logger } from '../utils/logger';
+import { botStateManager } from '../bot/state';
+import {
+  parseTimeCommand,
+  formatTimerConfirmation,
+  formatTimeStatus,
+  formatDateTimeInTimezone,
+  formatRemainingDuration,
+} from '../utils/timeParser';
 
 /**
  * Formats uptime milliseconds into human-readable string.
@@ -29,14 +37,184 @@ function toMB(bytes: number): string {
 }
 
 /**
+ * Handles the admin /off command.
+ * Usage:
+ *   /off -> Temporary shutdown (until /on or manual reactivation)
+ *   /off permanent -> Permanent shutdown across restarts until explicit /on
+ */
+export async function handleAdminOff(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+  const rawText = ctx.message?.text || '';
+  const args = rawText.replace(/^\/off(@\w+)?/i, '').trim().toLowerCase();
+
+  const isPermanent = args === 'permanent';
+
+  botStateManager.turnOff({
+    permanent: isPermanent,
+    disabledBy: userId,
+    reason: isPermanent ? 'Permanent admin shutdown' : 'Temporary admin shutdown',
+  });
+
+  const responseText = isPermanent
+    ? [
+        `⛔ *Celia — Permanent Bot Shutdown Activated*`,
+        '',
+        `• *Status:* Permanently Disabled`,
+        `• *Persistence:* Survives server restarts and redeployments`,
+        `• *User Activities:* All user-facing AI responses and public commands are paused`,
+        `• *Admin Controls:* Remotely active and listening for /on`,
+        '',
+        `_To resume normal bot functionality at any time, execute \`/on\`._`,
+      ].join('\n')
+    : [
+        `⏸️ *Celia — Temporary Bot Shutdown Activated*`,
+        '',
+        `• *Status:* Temporarily Disabled`,
+        `• *User Activities:* All user-facing AI responses and public commands are paused`,
+        `• *Admin Controls:* Remotely active and listening for /on or /time`,
+        '',
+        `_To resume immediately, send \`/on\`. To schedule an automatic reactivation timer, use \`/time <duration>\`._`,
+      ].join('\n');
+
+  logger.info('Admin executed /off', { isPermanent, userId });
+  await safeReply(ctx, responseText);
+}
+
+/**
+ * Handles the admin /on command.
+ * Reactivates user-facing functionality and clears any scheduled timer.
+ */
+export async function handleAdminOn(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+
+  botStateManager.turnOn(userId);
+
+  const responseText = [
+    `✅ *Celia — Bot Reactivated*`,
+    '',
+    `• *Status:* 🟢 Active & Online`,
+    `• *AI Responses:* Fully operational`,
+    `• *Scheduled Timers:* Cleared`,
+    `• *Public Commands:* Active`,
+    '',
+    `Celia is now responding normally to user queries across community groups and private chats! 🚀`,
+  ].join('\n');
+
+  logger.info('Admin executed /on', { userId });
+  await safeReply(ctx, responseText);
+}
+
+/**
+ * Handles the admin /time command.
+ * Usage:
+ *   /time 2 minutes
+ *   /time 30 minutes
+ *   /time 2 hours
+ *   /time 9:00 AM
+ *   /time tomorrow 9:00 AM
+ *   /time status
+ *   /time cancel
+ */
+export async function handleAdminTime(ctx: Context): Promise<void> {
+  const userId = ctx.from?.id;
+  const rawText = ctx.message?.text || '';
+  const param = rawText.replace(/^\/time(@\w+)?/i, '').trim();
+
+  const parseResult = parseTimeCommand(param, env.timezone);
+
+  switch (parseResult.type) {
+    case 'status': {
+      const currentState = botStateManager.getState();
+      const statusMsg = formatTimeStatus(currentState, env.timezone);
+      await safeReply(ctx, statusMsg);
+      return;
+    }
+
+    case 'cancel': {
+      const currentState = botStateManager.getState();
+      if (!currentState.reactivateAt) {
+        await safeReply(ctx, 'ℹ️ No scheduled reactivation timer is currently active.');
+        return;
+      }
+
+      botStateManager.cancelSchedule(userId);
+      await safeReply(
+        ctx,
+        `🚫 *Scheduled Reactivation Cancelled*\n\nThe pending timer has been cleared. The bot remains in its current status (\`${currentState.status}\`). To reactivate the bot now, send \`/on\`.`
+      );
+      return;
+    }
+
+    case 'ambiguous': {
+      await safeReply(ctx, parseResult.clarification);
+      return;
+    }
+
+    case 'invalid': {
+      await safeReply(ctx, parseResult.error);
+      return;
+    }
+
+    case 'duration': {
+      const updatedState = botStateManager.turnOff({
+        permanent: false,
+        reactivateAt: parseResult.targetDate,
+        durationMinutes: parseResult.durationMinutes,
+        disabledBy: userId,
+        reason: `Disabled for ${parseResult.durationMinutes} minute(s)`,
+      });
+
+      const confirmMsg = formatTimerConfirmation(updatedState, env.timezone);
+      await safeReply(ctx, confirmMsg);
+      return;
+    }
+
+    case 'specific_time': {
+      const diffMs = parseResult.targetDate.getTime() - Date.now();
+      const durationMinutes = Math.max(1, Math.round(diffMs / 60000));
+
+      const updatedState = botStateManager.turnOff({
+        permanent: false,
+        reactivateAt: parseResult.targetDate,
+        durationMinutes,
+        disabledBy: userId,
+        reason: `Disabled until scheduled time: ${parseResult.description}`,
+      });
+
+      const confirmMsg = formatTimerConfirmation(updatedState, env.timezone);
+      await safeReply(ctx, confirmMsg);
+      return;
+    }
+  }
+}
+
+/**
  * Handles the admin /status command.
  */
 export async function handleAdminStatus(ctx: Context): Promise<void> {
   const uptime = formatUptime(process.uptime());
   const mem = process.memoryUsage();
+  const state = botStateManager.getState();
+
+  let stateDescription = '🟢 Active';
+  if (state.status === 'temporary_disabled') {
+    stateDescription = '⏸️ Temporarily Disabled';
+    if (state.reactivateAt) {
+      stateDescription += ` (Reactivates at ${formatDateTimeInTimezone(new Date(state.reactivateAt), env.timezone)})`;
+    }
+  } else if (state.status === 'permanently_disabled') {
+    stateDescription = '⛔ Permanently Disabled';
+  }
 
   const report = [
-    `*📊 Celia — System Telemetry*`,
+    `*📊 Celia — System & Operational Telemetry*`,
+    '',
+    `*Operational State:*`,
+    `• *Bot Status:* ${stateDescription}`,
+    `• *Timezone:* \`${env.timezone}\``,
+    ...(state.reactivateAt
+      ? [`• *Timer Remaining:* \`${formatRemainingDuration(new Date(state.reactivateAt))}\``]
+      : []),
     '',
     `*Runtime Status:*`,
     `• *Uptime:* ${uptime}`,

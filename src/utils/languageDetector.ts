@@ -5,27 +5,31 @@
  * 1. Bengali script (Bangla)
  * 2. Romanized Bengali (Banglish)
  * 3. Non-Latin scripts (Arabic, Cyrillic, Devanagari/Hindi, CJK, etc.)
- * 4. Other non-English languages in Latin script (Spanish, French, Hinglish, etc.)
+ * 4. Other non-English languages in Latin script (Spanish, French, Hinglish, Arabic transliteration, etc.)
+ * 5. Mixed English / non-English messages (detects and rejects substantial non-English content)
  *
- * Strictly permits only English messages.
+ * Safe Fallbacks:
+ * - Does not flag valid English messages containing names, URLs, technical terms, code snippets, or emojis.
+ * - For ambiguous short messages (1-2 words), protects legitimate English/technical content.
  */
 
 export interface LanguageCheckResult {
   isEnglish: boolean;
   language: 'english' | 'bangla' | 'banglish' | 'other_non_english';
+  isMixed?: boolean;
   reason?: string;
 }
 
 // 1. Unicode Range for Bengali Script (\u0980-\u09FF)
-const BANGLA_SCRIPT_REGEX = /[\u0980-\u09FF]/;
+export const BANGLA_SCRIPT_REGEX = /[\u0980-\u09FF]/;
 
 // 2. Unicode Ranges for Other Non-Latin Scripts
-// Devanagari, Arabic/Urdu, Cyrillic, CJK, Thai, Greek, Hebrew, Indic scripts
-const OTHER_NON_LATIN_SCRIPT_REGEX =
+// Devanagari (Hindi), Arabic/Urdu, Cyrillic, CJK, Thai, Greek, Hebrew, Indic scripts
+export const OTHER_NON_LATIN_SCRIPT_REGEX =
   /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF\u0E00-\u0E7F\u0A00-\u0DFF\u0370-\u03FF\u0590-\u05FF]/;
 
 // 3. Banglish Keywords & Tokens (Phonetic Romanized Bengali)
-const BANGLISH_WORDS = new Set([
+export const BANGLISH_WORDS = new Set([
   // Pronouns & Possessives
   'ami', 'amra', 'amader', 'amake', 'amar',
   'tumi', 'tomra', 'tomader', 'tomake', 'tomar', 'tui', 'tora', 'tor', 'tore',
@@ -74,7 +78,7 @@ const BANGLISH_WORDS = new Set([
 ]);
 
 // 4. Banglish Multi-Word Phrases
-const BANGLISH_PHRASES = [
+export const BANGLISH_PHRASES = [
   'ki khobor',
   'ki obostha',
   'ki obstha',
@@ -86,6 +90,9 @@ const BANGLISH_PHRASES = [
   'thik ase',
   'kobe launch',
   'kobe listing',
+  'kobe hobe',
+  'bhai kobe',
+  'vai kobe',
   'bhai help',
   'vai help',
   'bhaiya help',
@@ -114,16 +121,21 @@ const BANGLISH_PHRASES = [
 ];
 
 // 5. Banglish Suffix Patterns (inflected verbs/nouns, only checked on non-English words)
-const BANGLISH_SUFFIX_PATTERNS = [
+export const BANGLISH_SUFFIX_PATTERNS = [
   /^[a-z]{3,}(?:chen|sen|chis|tesi|techi|gulo|gula)$/, // e.g. bolsen, boltesi, tokengulo
 ];
 
-// 6. Other Common Foreign (Non-English) Latin Words (Hinglish/Hindi, Spanish, French, etc.)
-const OTHER_FOREIGN_WORDS = new Set([
+// 6. Other Common Foreign (Non-English) Latin Words (Hinglish/Hindi, Arabic transliteration, Spanish, French, etc.)
+export const OTHER_FOREIGN_WORDS = new Set([
   // Hindi / Hinglish
   'kya', 'hai', 'hain', 'kaise', 'kahan', 'kab', 'hoga', 'nahi', 'nahin', 'aayega',
   'batao', 'pucho', 'kuch', 'samjha', 'accha', 'achha', 'karna', 'mujhe', 'mera',
   'meri', 'hum', 'aap', 'tum', 'tera', 'kaun', 'kyun', 'chal', 'raha', 'bataiye',
+  'namaste', 'shukriya', 'bhaiya', 'kitna', 'paisa', 'karo', 'karein',
+
+  // Arabic Romanized
+  'marhaba', 'marhaban', 'shukran', 'habibi', 'inshallah', 'inshaallah', 'alhamdulillah',
+  'wallah', 'ahlan', 'kayfa', 'haluk', 'haluka', 'naam', 'laa', 'akhi',
 
   // Spanish
   'hola', 'como', 'estas', 'gracias', 'buenos', 'dias', 'amigo', 'favor',
@@ -136,8 +148,13 @@ const OTHER_FOREIGN_WORDS = new Set([
   'hallo', 'danke', 'ciao', 'grazie', 'ola', 'obrigado', 'privet', 'kak', 'dela',
 ]);
 
+export const OTHER_FOREIGN_PHRASES = [
+  'kya haal', 'kya haal hai', 'kaise ho', 'kaise ho bhai',
+  'shukran jazeelan', 'kayfa halak', 'como estas', 'comment ca va',
+];
+
 // 7. Core English & Domain Vocabulary Set
-const COMMON_ENGLISH_WORDS = new Set([
+export const COMMON_ENGLISH_WORDS = new Set([
   // Pronouns, Articles, Prepositions & Conjunctions
   'a', 'about', 'above', 'across', 'after', 'again', 'against', 'all', 'almost', 'alone',
   'along', 'already', 'also', 'although', 'always', 'am', 'among', 'an', 'and', 'another',
@@ -170,7 +187,7 @@ const COMMON_ENGLISH_WORDS = new Set([
   'fee', 'fees', 'find', 'first', 'follow', 'force', 'found', 'founder', 'founders', 'free',
   'future', 'gain', 'gas', 'global', 'good', 'great', 'group', 'guide', 'guys', 'handle',
   'happy', 'hard', 'hear', 'help', 'helpful', 'helping', 'hey', 'hi', 'high', 'hold',
-  'holder', 'holders', 'holding', 'hour', 'hours', 'how', 'huge', 'info', 'information',
+  'holder', 'holders', 'holding', 'hour', 'hours', 'huge', 'info', 'information',
   'invest', 'investment', 'issue', 'join', 'keep', 'key', 'know', 'knowledge', 'last',
   'late', 'launch', 'launched', 'launching', 'learn', 'leave', 'legit', 'legitimate', 'life',
   'limit', 'link', 'links', 'liquidity', 'list', 'listed', 'listing', 'live', 'lock',
@@ -199,29 +216,34 @@ const COMMON_ENGLISH_WORDS = new Set([
   'website', 'week', 'weeks', 'welcome', 'whitepaper', 'win', 'withdrawal', 'work', 'working',
   'world', 'worth', 'wrong', 'year', 'years', 'yesterday',
 
-  // Crypto / Brand / Project specific abbreviations & names
-  'eforce', 'bnb', 'bsc', 'bep20', 'bep', 'prince', 'sourav', 'krit', 'gm', 'gn',
+  // Crypto / Brand / Project specific abbreviations, technical terms & names
+  'eforce', 'bnb', 'bsc', 'bep20', 'bep', 'prince', 'sourav', 'krit', 'celia', 'gm', 'gn',
   'ca', 'ath', 'atl', 'dex', 'cex', 'dapp', 'defi', 'web3', 'ok', 'okay', 'pls', 'plz',
-  'thx', 'cool', 'bro', 'sir', 'ai', 'faq', 'telegram', 'twitter', 'x',
+  'thx', 'cool', 'bro', 'sir', 'ai', 'faq', 'telegram', 'twitter', 'x', 'rpc', 'slippage',
+  'gwei', 'audit', 'dao', 'vault', 'yield', 'mint', 'burn', 'airdrop', 'whitelist', 'presale',
 ]);
 
 /**
- * Normalizes text by removing URLs, crypto contract addresses,
- * user mentions (@username), and digits.
+ * Normalizes text by removing code snippets, URLs, Telegram links, crypto contract
+ * addresses, user mentions (@username), crypto tickers ($TOKEN), and emojis.
  */
-function normalizeText(text: string): string {
+export function normalizeText(text: string): string {
   return text
+    .replace(/```[\s\S]*?```/g, ' ') // Strip multi-line code blocks
+    .replace(/`[^`\n]+`/g, ' ')       // Strip inline code
     .replace(/https?:\/\/\S+/gi, ' ') // Strip URLs
     .replace(/t\.me\/\S+/gi, ' ')     // Strip Telegram links
     .replace(/0x[a-fA-F0-9]{40}/g, ' ') // Strip BSC/ETH contract addresses
     .replace(/@\w+/g, ' ')            // Strip mentions
+    .replace(/\$[a-zA-Z0-9_]+/g, ' ') // Strip crypto tickers (e.g. $EFORCE)
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]+/gu, ' ') // Strip emojis
     .replace(/[0-9]+/g, ' ')          // Strip numbers
     .trim();
 }
 
 /**
  * Checks whether an incoming message is strictly in English.
- * Returns detailed diagnostic information.
+ * Returns detailed diagnostic information, including whether it is a mixed-language message.
  */
 export function checkMessageLanguage(rawText: string): LanguageCheckResult {
   const text = rawText.trim();
@@ -229,27 +251,31 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return { isEnglish: true, language: 'english' };
   }
 
-  // 1. Check for Bengali Unicode script characters
+  // 1. Check for Bengali Unicode script characters (\u0980-\u09FF)
   if (BANGLA_SCRIPT_REGEX.test(text)) {
+    const hasEnglishWords = /[a-zA-Z]{2,}/.test(text);
     return {
       isEnglish: false,
       language: 'bangla',
-      reason: 'Bengali script detected',
+      isMixed: hasEnglishWords,
+      reason: hasEnglishWords ? 'Mixed message containing Bengali script' : 'Bengali script detected',
     };
   }
 
   // 2. Check for Other Non-Latin Unicode scripts (Arabic, Cyrillic, Devanagari, CJK, etc.)
   if (OTHER_NON_LATIN_SCRIPT_REGEX.test(text)) {
+    const hasEnglishWords = /[a-zA-Z]{2,}/.test(text);
     return {
       isEnglish: false,
       language: 'other_non_english',
-      reason: 'Non-Latin script detected (e.g. Arabic, Cyrillic, Hindi, CJK)',
+      isMixed: hasEnglishWords,
+      reason: hasEnglishWords ? 'Mixed message containing non-Latin script' : 'Non-Latin script detected (e.g. Arabic, Cyrillic, Hindi, CJK)',
     };
   }
 
   const normalized = normalizeText(text).toLowerCase();
 
-  // If text only contained URLs or contract addresses (no words left), consider it neutral/allowed
+  // If text only contained URLs, code, or contract addresses (no words left), consider it allowed
   if (!normalized) {
     return { isEnglish: true, language: 'english' };
   }
@@ -257,10 +283,25 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
   // 3. Check for multi-word Banglish phrases
   for (const phrase of BANGLISH_PHRASES) {
     if (normalized.includes(phrase)) {
+      const hasEnglishWords = /[a-zA-Z]{3,}/.test(normalized.replace(phrase, ''));
       return {
         isEnglish: false,
         language: 'banglish',
+        isMixed: hasEnglishWords,
         reason: `Banglish phrase matched: "${phrase}"`,
+      };
+    }
+  }
+
+  // 3b. Check for other multi-word foreign phrases (Hinglish/Arabic/Spanish/French)
+  for (const phrase of OTHER_FOREIGN_PHRASES) {
+    if (normalized.includes(phrase)) {
+      const hasEnglishWords = /[a-zA-Z]{3,}/.test(normalized.replace(phrase, ''));
+      return {
+        isEnglish: false,
+        language: 'other_non_english',
+        isMixed: hasEnglishWords,
+        reason: `Foreign phrase matched: "${phrase}"`,
       };
     }
   }
@@ -271,15 +312,33 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return { isEnglish: true, language: 'english' };
   }
 
-  // 4. Check for individual Banglish words
+  // Count recognized English words vs non-English words to evaluate mixed messages
+  const recognizedEnglishWords: string[] = [];
+  const detectedNonEnglishWords: string[] = [];
+
   for (const word of words) {
     if (BANGLISH_WORDS.has(word)) {
-      return {
-        isEnglish: false,
-        language: 'banglish',
-        reason: `Banglish word matched: "${word}"`,
-      };
+      detectedNonEnglishWords.push(word);
+    } else if (OTHER_FOREIGN_WORDS.has(word)) {
+      detectedNonEnglishWords.push(word);
+    } else if (COMMON_ENGLISH_WORDS.has(word)) {
+      recognizedEnglishWords.push(word);
     }
+  }
+
+  // 4. Check for individual Banglish words
+  if (detectedNonEnglishWords.length > 0) {
+    const isMixed = recognizedEnglishWords.length > 0;
+    const firstNonEn = detectedNonEnglishWords[0];
+    const isBanglish = BANGLISH_WORDS.has(firstNonEn);
+    return {
+      isEnglish: false,
+      language: isBanglish ? 'banglish' : 'other_non_english',
+      isMixed,
+      reason: isMixed
+        ? `Mixed message containing non-English expression: "${firstNonEn}"`
+        : `Non-English word matched: "${firstNonEn}"`,
+    };
   }
 
   // 5. Check for Banglish inflectional suffix patterns on words not in English vocabulary
@@ -287,56 +346,43 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     if (COMMON_ENGLISH_WORDS.has(word)) continue;
     for (const pattern of BANGLISH_SUFFIX_PATTERNS) {
       if (pattern.test(word)) {
+        const isMixed = recognizedEnglishWords.length > 0;
         return {
           isEnglish: false,
           language: 'banglish',
+          isMixed,
           reason: `Banglish suffix pattern matched on word: "${word}"`,
         };
       }
     }
   }
 
-  // 6. Check for common other non-English words (Hinglish/Hindi, Spanish, French, etc.)
-  for (const word of words) {
-    if (OTHER_FOREIGN_WORDS.has(word)) {
-      return {
-        isEnglish: false,
-        language: 'other_non_english',
-        reason: `Non-English foreign word matched: "${word}"`,
-      };
-    }
+  // 6. Ambiguity Safeguard & General English Ratio Validation
+  // For short messages (1-2 words), do not reject based on missing dictionary entries.
+  // This prevents false positives on technical jargon, abbreviations, user names, or greetings.
+  if (words.length <= 2) {
+    return { isEnglish: true, language: 'english' };
   }
 
-  // 7. General English ratio validation
-  // For multi-word messages, verify that recognized English vocabulary dominates.
-  if (words.length >= 2) {
-    let recognizedCount = 0;
-    for (const word of words) {
-      if (COMMON_ENGLISH_WORDS.has(word)) {
-        recognizedCount++;
-      }
-    }
+  // For 3+ words: verify that recognized English vocabulary is present
+  const recognizedRatio = recognizedEnglishWords.length / words.length;
 
-    const recognizedRatio = recognizedCount / words.length;
+  // If 0 recognized English words in a multi-word message, flag as non-English
+  if (recognizedEnglishWords.length === 0 && words.length >= 3) {
+    return {
+      isEnglish: false,
+      language: 'other_non_english',
+      reason: `No recognizable English vocabulary in message (${words.length} words)`,
+    };
+  }
 
-    // If less than 40% of words are recognized English and not a short message
-    if (recognizedRatio < 0.4) {
-      return {
-        isEnglish: false,
-        language: 'other_non_english',
-        reason: `Low English word density (${Math.round(recognizedRatio * 100)}% recognized)`,
-      };
-    }
-  } else if (words.length === 1) {
-    // Single word: must be in recognized English/domain list or standard greeting
-    const singleWord = words[0];
-    if (!COMMON_ENGLISH_WORDS.has(singleWord)) {
-      return {
-        isEnglish: false,
-        language: 'other_non_english',
-        reason: `Unrecognized single word: "${singleWord}"`,
-      };
-    }
+  // If less than 25% recognized in a long message (5+ words), flag as low confidence
+  if (words.length >= 5 && recognizedRatio < 0.25) {
+    return {
+      isEnglish: false,
+      language: 'other_non_english',
+      reason: `Low English word density (${Math.round(recognizedRatio * 100)}% recognized)`,
+    };
   }
 
   return { isEnglish: true, language: 'english' };
@@ -345,21 +391,24 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
 export interface ProcessedLanguageResult {
   originalText: string;
   cleanedEnglishText: string;
+  isAllowed: boolean;
   hasEnglish: boolean;
   hasNonEnglish: boolean;
+  hasSubstantialNonEnglish: boolean;
+  isMixed: boolean;
   detectedNonEnglishLanguages: string[];
   removedContent: string[];
+  reason?: string;
 }
 
 /**
- * Normalizes and removes non-English words, phrases, and non-Latin scripts
- * while preserving English text, URLs, numbers, mentions, and symbols.
+ * Analyzes message language and determines whether it should be permitted or rejected.
  *
- * Processing Flow:
- * 1. Detect language
- * 2. Remove non-English content
- * 3. Process remaining English text
- * 4. Determine if meaningful English content remains
+ * Rules:
+ * - If message is pure English: isAllowed = true, hasNonEnglish = false.
+ * - If message contains substantial non-English text (even if mixed with English):
+ *   -> isAllowed = false, hasSubstantialNonEnglish = true, isMixed = true.
+ * - If message is pure non-English: isAllowed = false, hasEnglish = false.
  */
 export function processAndFilterMessageLanguage(rawText: string): ProcessedLanguageResult {
   const originalText = rawText.trim();
@@ -367,8 +416,11 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
     return {
       originalText,
       cleanedEnglishText: '',
+      isAllowed: true,
       hasEnglish: false,
       hasNonEnglish: false,
+      hasSubstantialNonEnglish: false,
+      isMixed: false,
       detectedNonEnglishLanguages: [],
       removedContent: [],
     };
@@ -379,7 +431,7 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
 
   let workingText = originalText;
 
-  // 1. Remove non-Latin scripts (Bangla, Arabic, Hindi, Cyrillic, CJK, etc.)
+  // 1. Detect and extract non-Latin scripts (Bangla, Arabic, Hindi, Cyrillic, CJK, etc.)
   if (BANGLA_SCRIPT_REGEX.test(workingText)) {
     detectedNonEnglishLanguages.add('Bangla');
     const matches = workingText.match(/[\u0980-\u09FF]+/g) || [];
@@ -394,7 +446,7 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
     workingText = workingText.replace(new RegExp(OTHER_NON_LATIN_SCRIPT_REGEX.source, 'g'), ' ');
   }
 
-  // 2. Remove multi-word Banglish phrases
+  // 2. Detect and extract multi-word Banglish phrases
   for (const phrase of BANGLISH_PHRASES) {
     const regex = new RegExp(`\\b${phrase}\\b`, 'gi');
     if (regex.test(workingText)) {
@@ -404,20 +456,30 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
     }
   }
 
+  // 2b. Detect and extract other multi-word foreign phrases
+  for (const phrase of OTHER_FOREIGN_PHRASES) {
+    const regex = new RegExp(`\\b${phrase}\\b`, 'gi');
+    if (regex.test(workingText)) {
+      detectedNonEnglishLanguages.add('Foreign (Non-English)');
+      removedContent.push(phrase);
+      workingText = workingText.replace(regex, ' ');
+    }
+  }
+
   // 3. Tokenize by words and analyze Latin non-English words
-  // Preserve URLs, contract addresses, @mentions by temporarily tokenizing around whitespace
   const rawTokens = workingText.split(/\s+/);
   const preservedTokens: string[] = [];
 
   for (const token of rawTokens) {
     if (!token) continue;
 
-    // Preserve URLs, Telegram links, mentions, numbers, contract addresses
+    // Preserve URLs, Telegram links, mentions, numbers, contract addresses, tickers
     if (
       /^https?:\/\//i.test(token) ||
       /^t\.me\//i.test(token) ||
       /^0x[a-f0-9]{40}$/i.test(token) ||
       /^@\w+/i.test(token) ||
+      /^\$[a-zA-Z0-9_]+$/i.test(token) ||
       /^[0-9$€£¥%+\-/*=.,#:]+$/.test(token)
     ) {
       preservedTokens.push(token);
@@ -454,7 +516,7 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
       continue;
     }
 
-    // Check if word is foreign Latin (Hindi/Spanish/French/etc.)
+    // Check if word is foreign Latin (Hindi/Spanish/French/Arabic transliteration/etc.)
     if (OTHER_FOREIGN_WORDS.has(cleanWord)) {
       detectedNonEnglishLanguages.add('Foreign (Non-English)');
       removedContent.push(token);
@@ -466,14 +528,13 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
   }
 
   // 4. Reconstruct cleaned English text
-  let cleanedEnglishText = preservedTokens
+  const cleanedEnglishText = preservedTokens
     .join(' ')
     .replace(/\s+([.,!?;:])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
 
   // 5. Evaluate remaining English viability
-  // Check remaining alphabetic words against English vocabulary
   const remainingWords = cleanedEnglishText.toLowerCase().match(/[a-z]+/g) || [];
   let recognizedEnglishCount = 0;
 
@@ -483,19 +544,33 @@ export function processAndFilterMessageLanguage(rawText: string): ProcessedLangu
     }
   }
 
-  // If there are words left, check whether recognized English words exist
   const hasEnglish =
     remainingWords.length > 0 &&
     (recognizedEnglishCount >= 1 || cleanedEnglishText.includes('http') || cleanedEnglishText.includes('0x'));
 
   const hasNonEnglish = removedContent.length > 0;
+  const isMixed = hasEnglish && hasNonEnglish;
+
+  // Substantial non-English: If any non-English tokens/phrases/scripts were removed,
+  // or if non-English words make up a significant presence.
+  const hasSubstantialNonEnglish =
+    hasNonEnglish && (removedContent.length >= 1 || detectedNonEnglishLanguages.size > 0);
+
+  // If there is substantial non-English content in the message, it is rejected
+  const isAllowed = !hasSubstantialNonEnglish && (hasEnglish || remainingWords.length <= 2);
 
   return {
     originalText,
     cleanedEnglishText,
+    isAllowed,
     hasEnglish,
     hasNonEnglish,
+    hasSubstantialNonEnglish,
+    isMixed,
     detectedNonEnglishLanguages: Array.from(detectedNonEnglishLanguages),
     removedContent,
+    reason: !isAllowed
+      ? `Non-English content detected: ${Array.from(detectedNonEnglishLanguages).join(', ')}`
+      : undefined,
   };
 }

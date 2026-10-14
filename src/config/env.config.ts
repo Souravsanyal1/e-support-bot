@@ -11,6 +11,7 @@ export interface AppConfig {
   readonly geminiApiKey?: string;
   readonly geminiModel: string;
   readonly adminUserIds: ReadonlySet<number>;
+  readonly timezone: string;
   readonly botMode: 'polling' | 'webhook';
   readonly port: number;
   readonly webhookUrl?: string;
@@ -85,17 +86,25 @@ function loadAndValidateConfig(): AppConfig {
     }
   }
 
-  // Parse admin user IDs
-  const rawAdminIds = process.env.ADMIN_USER_IDS?.trim() || '';
+  // Parse admin user IDs from TELEGRAM_ADMIN_ID and ADMIN_USER_IDS
+  const rawAdminSources = [
+    process.env.TELEGRAM_ADMIN_ID?.trim(),
+    process.env.ADMIN_USER_IDS?.trim(),
+  ].filter(Boolean);
+
   const adminUserIds = new Set<number>();
-  if (rawAdminIds) {
-    for (const rawId of rawAdminIds.split(',')) {
+  for (const source of rawAdminSources) {
+    if (!source) continue;
+    for (const rawId of source.split(',')) {
       const parsed = parseInt(rawId.trim(), 10);
       if (!isNaN(parsed) && parsed > 0) {
         adminUserIds.add(parsed);
       }
     }
   }
+
+  // Configured timezone with fallback to Asia/Dhaka
+  const timezone = process.env.TIMEZONE?.trim() || 'Asia/Dhaka';
 
   // Bot mode
   const rawMode = process.env.BOT_MODE?.trim().toLowerCase();
@@ -143,6 +152,7 @@ function loadAndValidateConfig(): AppConfig {
     geminiApiKey,
     geminiModel,
     adminUserIds,
+    timezone,
     botMode,
     port: isNaN(port) ? 3000 : port,
     webhookUrl,

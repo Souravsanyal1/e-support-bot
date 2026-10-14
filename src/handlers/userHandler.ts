@@ -1,6 +1,10 @@
 import { Context } from 'grammy';
 import { generateSupportResponse } from '../ai/gemini';
+import { analyzeImageWithAI } from '../ai/vision';
 import { BOT_CONFIG, PUBLIC_COMMANDS } from '../config/bot.config';
+import { env } from '../config/env.config';
+import { botStateManager } from '../bot/state';
+import { isAdmin } from '../middleware/adminAuth';
 import {
   safeReply,
   sendTypingAction,
@@ -15,6 +19,7 @@ import {
   observeOfficialChannelPost,
 } from '../ai/officialChannelKnowledge';
 import { checkMessageLanguage } from '../utils/languageDetector';
+import { checkBadWords } from '../utils/badWordsDetector';
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
@@ -46,6 +51,10 @@ async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
  * Handles the /start command.
  */
 export async function handleStartCommand(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
   const message = [
     `*${BOT_CONFIG.introduction}* 👋`,
     `Ask me about Elite Force, E-FORCE, and official updates.`,
@@ -61,6 +70,10 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
  * Handles the /help command.
  */
 export async function handleHelpCommand(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
   const commandList = PUBLIC_COMMANDS.map((cmd) => `• \`/${cmd.command}\` — ${cmd.description}`).join(
     '\n'
   );
@@ -71,8 +84,8 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     `*Available Commands:*`,
     commandList,
     '',
-    `*Direct Chat:*`,
-    `You can chat directly! Simply send any question, and I'll respond in clear, natural English.`,
+    `*Direct Chat & Image Support:*`,
+    `You can chat directly or send photos/screenshots with questions! I will analyze them and reply in clear English.`,
     '',
     `*Official Channels:*`,
     `📢 [Telegram](https://t.me/Elite_Force_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
@@ -89,6 +102,10 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
  * Handles the /about command.
  */
 export async function handleAboutCommand(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
   const message = [
     `*About ${BOT_CONFIG.name}* 🛡️`,
     '',
@@ -117,6 +134,10 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
  * Handles the /ask command (e.g., /ask What is Elite Force?).
  */
 export async function handleAskCommand(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
   if (!ctx.from && !ctx.message?.sender_chat) return;
 
   const rawText = ctx.message?.text || '';
@@ -126,7 +147,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   if (!query) {
     await safeReply(
       ctx,
-      `Please provide a question after the command, for example:\n\`/ask What is Elite Force?\`\n\nOr you can simply send your question directly!`
+      `Please provide a question after the command, for example:\n\`/ask What is Elite Force?\`\n\nOr you can simply send your question or image directly!`
     );
     return;
   }
@@ -139,10 +160,12 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(query);
   if (!langCheck.isEnglish) {
-    try {
-      await ctx.deleteMessage();
-    } catch {
-      // Ignore
+    if (ctx.chat?.type !== 'private') {
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        // Ignore
+      }
     }
     return;
   }
@@ -186,33 +209,27 @@ export async function handleChannelPost(ctx: Context): Promise<void> {
 }
 
 /**
- * Legacy selective trigger predicate retained for compatibility. The normal
- * text handler no longer uses this gate and responds to all group text messages.
+ * Legacy selective trigger predicate retained for compatibility.
  */
 export function shouldRespondInGroup(ctx: Context, text: string): boolean {
   const chatType = ctx.chat?.type;
-  // In private DMs, always respond
   if (chatType === 'private') {
     return true;
   }
 
-  // In groups or supergroups:
   const botUsername = ctx.me?.username ? ctx.me.username.toLowerCase() : 'elite_force_support_bot';
   const lowerText = text.toLowerCase();
 
-  // 1. Tagged with bot username (e.g. @Elite_Force_Support_Bot)
   if (lowerText.includes(`@${botUsername}`) || lowerText.includes('@elite_force_support_bot')) {
     return true;
   }
 
-  // 2. Direct reply to one of the bot's messages
   if (ctx.message?.reply_to_message?.from?.id && ctx.me?.id) {
     if (ctx.message.reply_to_message.from.id === ctx.me.id) {
       return true;
     }
   }
 
-  // 3. Questions / messages mentioning "elite force" or "eliteforce" or "elite-force"
   if (
     lowerText.includes('elite force') ||
     lowerText.includes('eliteforce') ||
@@ -226,11 +243,13 @@ export function shouldRespondInGroup(ctx: Context, text: string): boolean {
 
 /**
  * Handles standard incoming text messages (natural conversation).
- * Works in private DMs and responds to every text message in community groups.
  */
 export async function handleTextMessage(ctx: Context): Promise<void> {
-  const text = ctx.message?.text?.trim();
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
 
+  const text = ctx.message?.text?.trim();
   if ((!ctx.from && !ctx.message?.sender_chat) || !text) return;
 
   // Ignore commands that might have bypassed command routing
@@ -255,10 +274,12 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(queryToProcess);
   if (!langCheck.isEnglish) {
-    try {
-      await ctx.deleteMessage();
-    } catch {
-      // Ignore
+    if (ctx.chat?.type !== 'private') {
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        // Ignore
+      }
     }
     return;
   }
@@ -274,7 +295,7 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
       getRelevantOfficialChannelContext(queryToProcess)
     );
 
-    // Ensure the animated sticker is visible for at least 3000ms so user clearly sees the animation
+    // Ensure the animated sticker is visible for at least 3000ms
     const elapsed = Date.now() - startTime;
     const minDisplayMs = 3000;
     if (elapsed < minDisplayMs) {
@@ -295,13 +316,133 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 }
 
 /**
+ * Handles user-submitted photos and screenshots using multimodal AI vision.
+ */
+export async function handlePhotoMessage(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
+  const photos = ctx.message?.photo;
+  if (!photos || photos.length === 0) return;
+
+  const caption = ctx.message?.caption?.trim();
+
+  // If caption has non-English text or bad words, enforce community guidelines
+  if (caption) {
+    const badCheck = checkBadWords(caption);
+    if (badCheck.hasBadWords) {
+      if (ctx.chat?.type !== 'private') {
+        try {
+          await ctx.deleteMessage();
+        } catch {
+          // Ignore
+        }
+      }
+      return;
+    }
+
+    const langCheck = checkMessageLanguage(caption);
+    if (!langCheck.isEnglish) {
+      if (ctx.chat?.type !== 'private') {
+        try {
+          await ctx.deleteMessage();
+        } catch {
+          // Ignore
+        }
+      }
+      return;
+    }
+  }
+
+  // Select the highest resolution photo
+  const bestPhoto = photos[photos.length - 1];
+
+  // Safeguard: File size limit (10MB)
+  if (bestPhoto.file_size && bestPhoto.file_size > 10 * 1024 * 1024) {
+    await safeReply(
+      ctx,
+      '⚠️ The sent image is too large. Please upload an image smaller than 10 MB.',
+      { replyToMessage: true }
+    );
+    return;
+  }
+
+  await sendTypingAction(ctx);
+  const startTime = Date.now();
+  const loadingStickerId = await sendLoadingSticker(ctx);
+
+  try {
+    // Retrieve file metadata from Telegram Bot API
+    const fileInfo = await ctx.api.getFile(bestPhoto.file_id);
+    if (!fileInfo.file_path) {
+      throw new Error('Telegram Bot API did not return a valid file_path');
+    }
+
+    // Determine MIME type from file extension
+    const filePath = fileInfo.file_path.toLowerCase();
+    let mimeType = 'image/jpeg';
+    if (filePath.endsWith('.png')) {
+      mimeType = 'image/png';
+    } else if (filePath.endsWith('.webp')) {
+      mimeType = 'image/webp';
+    }
+
+    // Download image buffer securely using internal token
+    const fileUrl = `https://api.telegram.org/file/bot${env.telegramBotToken}/${fileInfo.file_path}`;
+    const fileRes = await fetch(fileUrl, { signal: AbortSignal.timeout(15000) });
+
+    if (!fileRes.ok) {
+      throw new Error(`Failed to download image from Telegram file server (status ${fileRes.status})`);
+    }
+
+    const arrayBuf = await fileRes.arrayBuffer();
+    const imageBase64 = Buffer.from(arrayBuf).toString('base64');
+
+    // Contextual knowledge from official channel
+    const contextInfo = caption
+      ? getRelevantOfficialChannelContext(caption) || undefined
+      : undefined;
+
+    // Analyze with vision model
+    const analysisResponse = await analyzeImageWithAI({
+      imageBase64,
+      mimeType,
+      userPrompt: caption,
+      contextInfo,
+    });
+
+    // Ensure the animated loading sticker is visible for at least 3000ms
+    const elapsed = Date.now() - startTime;
+    const minDisplayMs = 3000;
+    if (elapsed < minDisplayMs) {
+      await sleep(minDisplayMs - elapsed);
+    }
+
+    await deleteLoadingSticker(ctx, loadingStickerId);
+    await safeReply(ctx, analysisResponse, { replyToMessage: true });
+  } catch (error) {
+    await deleteLoadingSticker(ctx, loadingStickerId);
+    logger.error('Error handling photo message', error);
+    await safeReply(
+      ctx,
+      "I'm temporarily experiencing an issue analyzing this image. Please ensure the image is clear and try again in a few moments.",
+      { replyToMessage: true }
+    );
+  }
+}
+
+/**
  * Welcomes the community when the bot is added to a group or supergroup.
  */
 export async function handleNewChatMembers(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
   const newMembers = ctx.message?.new_chat_members || [];
   const botId = ctx.me?.id;
 
-  // Check if our bot was added
   const isBotAdded = newMembers.some((member) => member.id === botId);
 
   if (isBotAdded) {
@@ -313,6 +454,7 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
       '',
       `*How to interact with me in this group:*`,
       `• Tag me: @${username} <your question>`,
+      `• Send an image/screenshot with a question`,
       `• Reply directly to any of my messages`,
       `• Ask any question mentioning *Elite Force*`,
       `• Use \`/ask <question>\` or \`/help\``,

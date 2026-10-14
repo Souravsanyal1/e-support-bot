@@ -48,4 +48,22 @@ export const ADMIN_COMMANDS = {
   RELOAD: 'reload',
   BROADCAST: 'broadcast',
   USERS: 'users',
+  OFF: 'off',
+  ON: 'on',
+  TIME: 'time',
+} as const;
+
+/**
+ * Centralized Language Enforcement Policy Configuration
+ */
+export const LANGUAGE_POLICY = {
+  enabled: true,
+  allowedLanguage: 'english',
+  deleteInGroups: true,
+  sendWarningInGroups: true,
+  sendWarningInPrivate: true,
+  warningAutoDeleteMs: 2 * 60 * 1000, // 2 minutes auto-delete in groups
+  warningMessage: '⚠️ Only English is supported. Please ask your question in English.',
+  // Reject mixed messages if any non-Latin script or substantial non-English words are found
+  rejectMixedWithSubstantialNonEnglish: true,
 } as const;
