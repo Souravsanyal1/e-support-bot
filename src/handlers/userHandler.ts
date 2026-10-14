@@ -189,12 +189,10 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(query);
   if (!langCheck.isEnglish) {
-    if (ctx.chat?.type !== 'private') {
-      try {
-        await ctx.deleteMessage();
-      } catch {
-        // Ignore
-      }
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      // Ignore
     }
     return;
   }
@@ -303,12 +301,10 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(queryToProcess);
   if (!langCheck.isEnglish) {
-    if (ctx.chat?.type !== 'private') {
-      try {
-        await ctx.deleteMessage();
-      } catch {
-        // Ignore
-      }
+    try {
+      await ctx.deleteMessage();
+    } catch {
+      // Ignore
     }
     return;
   }
@@ -387,24 +383,20 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
   if (caption) {
     const badCheck = checkBadWords(caption);
     if (badCheck.hasBadWords) {
-      if (ctx.chat?.type !== 'private') {
-        try {
-          await ctx.deleteMessage();
-        } catch {
-          // Ignore
-        }
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        // Ignore
       }
       return;
     }
 
     const langCheck = checkMessageLanguage(caption);
     if (!langCheck.isEnglish) {
-      if (ctx.chat?.type !== 'private') {
-        try {
-          await ctx.deleteMessage();
-        } catch {
-          // Ignore
-        }
+      try {
+        await ctx.deleteMessage();
+      } catch {
+        // Ignore
       }
       return;
     }
