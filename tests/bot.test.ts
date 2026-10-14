@@ -1099,6 +1099,88 @@ async function runTests() {
   assert(env.imageModerationWarningMessage.includes('strictly prohibited'), 'Warning message must enforce community rules');
   console.log('✓ Image moderation safeguards, group filters & deduplication passed');
 
+  // Test 27: Zero-Tolerance Group Image Auto-Removal Policy
+  console.log('Testing Zero-Tolerance Group Image Auto-Removal Policy...');
+  const { GROUP_MEDIA_POLICY: groupMediaPol } = await import('../src/config/bot.config');
+  assert.strictEqual(groupMediaPol.blockAllImagesInGroups, true, 'blockAllImagesInGroups must be true');
+
+  let test27GroupPhotoDeleted = false;
+  let test27GroupWarningReplied = false;
+
+  const mockGroupPhotoCtx = {
+    chat: { id: -1005555555, type: 'supergroup' },
+    from: { id: 777123, is_bot: false },
+    message: {
+      message_id: 334455,
+      photo: [{ file_id: 'sample_file_id', file_size: 1024 }],
+      date: Math.floor(Date.now() / 1000),
+    },
+    deleteMessage: async () => {
+      test27GroupPhotoDeleted = true;
+      return true;
+    },
+    reply: async (text: string) => {
+      test27GroupWarningReplied = true;
+      assert.strictEqual(text, groupMediaPol.warningMessage);
+      return { message_id: 445566 };
+    },
+  } as unknown as Context;
+
+  await handlePhotoMessage(mockGroupPhotoCtx);
+  assert.strictEqual(test27GroupPhotoDeleted, true, 'Regular user image in group must be deleted immediately');
+  assert.strictEqual(test27GroupWarningReplied, true, 'Group image notice must be sent to the group');
+
+  // Test document image attachment in group
+  let test27GroupDocDeleted = false;
+  let test27GroupDocWarning = false;
+
+  const mockGroupDocCtx = {
+    chat: { id: -1005555555, type: 'supergroup' },
+    from: { id: 777124, is_bot: false },
+    message: {
+      message_id: 334456,
+      document: { file_id: 'doc_img_file_id', file_size: 2048, mime_type: 'image/png' },
+      date: Math.floor(Date.now() / 1000),
+    },
+    deleteMessage: async () => {
+      test27GroupDocDeleted = true;
+      return true;
+    },
+    reply: async (text: string) => {
+      test27GroupDocWarning = true;
+      assert.strictEqual(text, groupMediaPol.warningMessage);
+      return { message_id: 445567 };
+    },
+  } as unknown as Context;
+
+  await handlePhotoMessage(mockGroupDocCtx);
+  assert.strictEqual(test27GroupDocDeleted, true, 'Regular user image document in group must be deleted immediately');
+  assert.strictEqual(test27GroupDocWarning, true, 'Group image notice must be sent for image documents');
+
+  // Test error resilience when deleteMessage throws (e.g. lack of permissions)
+  let test27FailedDeleteWarning = false;
+  const mockFailedDeleteCtx = {
+    chat: { id: -1005555555, type: 'supergroup' },
+    from: { id: 777125, is_bot: false },
+    message: {
+      message_id: 334457,
+      photo: [{ file_id: 'sample_file_id_2', file_size: 1024 }],
+      date: Math.floor(Date.now() / 1000),
+    },
+    deleteMessage: async () => {
+      throw new Error("Telegram Bot API: 400 Bad Request: message can't be deleted");
+    },
+    reply: async () => {
+      test27FailedDeleteWarning = true;
+      return { message_id: 445568 };
+    },
+  } as unknown as Context;
+
+  // Must not throw or crash
+  await handlePhotoMessage(mockFailedDeleteCtx);
+  assert.strictEqual(test27FailedDeleteWarning, true, 'Must send warning even if deleteMessage fails due to permissions');
+  console.log('✓ Zero-tolerance group image auto-removal policy passed');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();

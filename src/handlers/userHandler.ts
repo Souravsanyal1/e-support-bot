@@ -8,7 +8,7 @@ import {
   markMessageAsProcessed,
   shouldModerateChat,
 } from '../ai/moderation';
-import { BOT_CONFIG, PUBLIC_COMMANDS } from '../config/bot.config';
+import { BOT_CONFIG, PUBLIC_COMMANDS, GROUP_MEDIA_POLICY } from '../config/bot.config';
 import { env } from '../config/env.config';
 import { botStateManager } from '../bot/state';
 import { isAdmin } from '../middleware/adminAuth';
@@ -17,6 +17,7 @@ import {
   sendTypingAction,
   sendLoadingSticker,
   deleteLoadingSticker,
+  scheduleAutoDelete,
   sleep,
 } from '../utils/telegram';
 import { logger } from '../utils/logger';
@@ -377,6 +378,37 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     markMessageAsProcessed(messageId);
   }
 
+  // ── Zero-Tolerance Image Sharing Policy in Community Groups ────────────────
+  const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+  const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
+
+  if (isGroup && GROUP_MEDIA_POLICY.blockAllImagesInGroups && !isSenderAdmin) {
+    try {
+      await ctx.deleteMessage();
+      logger.info('Deleted image from group as per group media policy', {
+        chatId: ctx.chat?.id,
+        messageId: ctx.message?.message_id,
+        fromUserId: ctx.from?.id,
+      });
+    } catch (err) {
+      logger.warn('Failed to delete group image (bot may lack delete permissions)', {
+        chatId: ctx.chat?.id,
+        messageId: ctx.message?.message_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
+      if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
+        scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+      }
+    } catch {
+      // Silently swallow reply errors
+    }
+    return;
+  }
+
   const caption = ctx.message?.caption?.trim();
 
   // If caption has non-English text or bad words, enforce community guidelines
@@ -446,7 +478,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const imageBase64 = Buffer.from(arrayBuf).toString('base64');
 
     // ── Step 1: Inappropriate Image Detection & Auto-Moderation (Req 18) ────────
-    const isGroup = ctx.chat?.type !== 'private';
+    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
     const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
     const shouldModerate = shouldModerateChat(ctx.chat?.id, isGroup) && !isSenderAdmin;
 

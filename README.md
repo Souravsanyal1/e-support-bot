@@ -279,6 +279,28 @@ To maintain a safe and professional environment across official Elite Force comm
 
 ---
 
+## 🛡️ Telegram Group Image Moderation Setup & Permissions
+
+To enable the bot to automatically intercept and remove all user-sent images (photos and image document attachments) in Telegram community groups:
+
+### 1. Add Bot to Group & Promote to Admin
+1. Open your Telegram group chat settings.
+2. Add `@YourBotUsername` to the group.
+3. Promote the bot to **Administrator**.
+4. Enable the **Delete Messages** (`can_delete_messages`) administrator permission.
+   * *Without this permission, Telegram will reject deletion attempts with a `400 Bad Request: message can't be deleted` error.*
+
+### 2. Disable Group Privacy Mode in @BotFather
+By default, Telegram bots operate with "Group Privacy" enabled, which means the bot only receives messages that mention the bot, reply to the bot, or begin with a slash command (`/`). To allow the bot to detect and remove **all** user image uploads:
+1. Open [@BotFather](https://t.me/BotFather) on Telegram.
+2. Send `/setprivacy`.
+3. Select your bot's username.
+4. Click or send **Disable**.
+5. Once disabled, the bot will receive all media events in groups and immediately remove unauthorized images.
+
+---
+
+
 ## 🧪 Testing & Verification
 
 Run the full automated test suite covering all 26 test cases:

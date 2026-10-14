@@ -67,3 +67,14 @@ export const LANGUAGE_POLICY = {
   // Reject mixed messages if any non-Latin script or substantial non-English words are found
   rejectMixedWithSubstantialNonEnglish: true,
 } as const;
+
+/**
+ * Community Group Media Moderation Policy
+ * Disallows image sharing by regular members in community groups.
+ */
+export const GROUP_MEDIA_POLICY = {
+  blockAllImagesInGroups: true,
+  warningMessage: '⚠️ Sharing images is not allowed in this community group.',
+  warningAutoDeleteMs: 60 * 1000, // 1 minute auto-delete notice
+} as const;
+
