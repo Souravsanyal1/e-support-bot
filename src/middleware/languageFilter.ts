@@ -101,41 +101,36 @@ export async function languageFilterMiddleware(
       snippet: textToCheck.slice(0, 60),
     });
 
-    // 7. Group vs Private Chat Moderation Handling
-    if (!isPrivate) {
-      // Group / Supergroup: Attempt message deletion if enabled
-      if (LANGUAGE_POLICY.deleteInGroups) {
-        try {
-          await ctx.deleteMessage();
-        } catch (deleteError) {
-          logger.warn('Failed to delete non-English message in group (bot may lack delete permissions)', {
-            chatId: ctx.chat?.id,
-            messageId: ctx.msg?.message_id,
-            error: deleteError instanceof Error ? deleteError.message : String(deleteError),
-          });
-        }
-      }
+    // 7. Instant Message Deletion Across All Chats (Private DMs & Groups)
+    try {
+      await ctx.deleteMessage();
+      logger.info('Deleted non-English message', {
+        chatId: ctx.chat?.id,
+        chatType: ctx.chat?.type,
+        messageId: ctx.msg?.message_id,
+      });
+    } catch (deleteError) {
+      logger.warn('Failed to delete non-English message', {
+        chatId: ctx.chat?.id,
+        chatType: ctx.chat?.type,
+        messageId: ctx.msg?.message_id,
+        error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+      });
+    }
 
-      // Send temporary warning notice in group with auto-delete timer
-      if (LANGUAGE_POLICY.sendWarningInGroups) {
-        try {
-          const warningMsg = await ctx.reply(LANGUAGE_POLICY.warningMessage);
-          if (warningMsg?.message_id && LANGUAGE_POLICY.warningAutoDeleteMs > 0) {
-            scheduleAutoDelete(ctx, warningMsg.message_id, LANGUAGE_POLICY.warningAutoDeleteMs);
-          }
-        } catch {
-          // Silently swallow reply errors
+    // Send temporary warning notice with auto-delete timer
+    const shouldSendWarning = isPrivate
+      ? LANGUAGE_POLICY.sendWarningInPrivate
+      : LANGUAGE_POLICY.sendWarningInGroups;
+
+    if (shouldSendWarning) {
+      try {
+        const warningMsg = await ctx.reply(LANGUAGE_POLICY.warningMessage);
+        if (warningMsg?.message_id && LANGUAGE_POLICY.warningAutoDeleteMs > 0) {
+          scheduleAutoDelete(ctx, warningMsg.message_id, LANGUAGE_POLICY.warningAutoDeleteMs);
         }
-      }
-    } else {
-      // Private Chat: Bots cannot delete user messages in DMs on Telegram.
-      // Simply reject with warning without attempting deleteMessage().
-      if (LANGUAGE_POLICY.sendWarningInPrivate) {
-        try {
-          await ctx.reply(LANGUAGE_POLICY.warningMessage);
-        } catch {
-          // Silently swallow reply errors
-        }
+      } catch {
+        // Silently swallow reply errors
       }
     }
 

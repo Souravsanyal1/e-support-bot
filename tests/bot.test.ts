@@ -313,7 +313,7 @@ async function runTests() {
     privateNextCalled = true;
   });
 
-  assert.strictEqual(privateDeletedAttempted, false, 'In private chats, middleware must NOT attempt deleteMessage()');
+  assert.strictEqual(privateDeletedAttempted, true, 'In private chats, middleware must attempt deleteMessage() to remove non-English message');
   assert.strictEqual(privateWarningReplied, true, 'In private chats, middleware must send warning reply');
   assert.strictEqual(privateNextCalled, false, 'In private chats, middleware must NOT call next()');
 
