@@ -52,6 +52,9 @@ export const ADMIN_COMMANDS = {
   OFF: 'off',
   ON: 'on',
   TIME: 'time',
+  LOOKUP: 'lookup',
+  LOGS: 'logs',
+  CLEARLOGS: 'clearlogs',
 } as const;
 
 /**
@@ -67,6 +70,9 @@ export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
   { command: 'off', description: 'Disable bot responses (with optional reason)' },
   { command: 'on', description: 'Re-enable bot responses for users' },
   { command: 'time', description: 'Schedule temporary downtime with auto-reactivation' },
+  { command: 'lookup', description: 'Lookup user details by @username' },
+  { command: 'logs', description: 'Get full message log as txt file' },
+  { command: 'clearlogs', description: 'Clear the message log file' },
 ] as const;
 
 /**

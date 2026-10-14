@@ -26,6 +26,9 @@ import {
   handleAdminOn,
   handleAdminTime,
   handleAdminSync,
+  handleAdminLookup,
+  handleAdminLogs,
+  handleAdminClearLogs,
 } from '../handlers/adminHandler';
 
 /**
@@ -84,6 +87,9 @@ export function createBot(): Bot {
   bot.command('off', requireAdmin, handleAdminOff);
   bot.command('on', requireAdmin, handleAdminOn);
   bot.command('time', requireAdmin, handleAdminTime);
+  bot.command('lookup', requireAdmin, handleAdminLookup);
+  bot.command('logs', requireAdmin, handleAdminLogs);
+  bot.command('clearlogs', requireAdmin, handleAdminClearLogs);
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);

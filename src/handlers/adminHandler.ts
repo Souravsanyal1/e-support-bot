@@ -1,9 +1,11 @@
 import { Context } from 'grammy';
+import { InputFile } from 'grammy';
 import { env } from '../config/env.config';
 import { safeReply } from '../utils/telegram';
 import { logger } from '../utils/logger';
 import { botStateManager } from '../bot/state';
 import { knowledgeSyncService } from '../services/knowledgeSync';
+import { clearLogFile } from '../utils/messageLogger';
 import {
   parseTimeCommand,
   formatTimerConfirmation,
@@ -333,4 +335,120 @@ export async function handleAdminBroadcast(ctx: Context): Promise<void> {
     ctx,
     `Broadcast is disabled because the bot does not store user IDs. Please publish announcements in the official channel.`
   );
+}
+
+/**
+ * Handles the admin /lookup command.
+ * Usage: /lookup @username  OR  /lookup username
+ * Fetches Telegram user/chat info by username via Telegram API.
+ */
+export async function handleAdminLookup(ctx: Context): Promise<void> {
+  const rawText = ctx.message?.text || '';
+  const param = rawText.replace(/^\/lookup(@\w+)?/i, '').trim();
+
+  if (!param) {
+    await safeReply(
+      ctx,
+      `*🔍 Usage:* \`/lookup @username\`\n\nProvide a Telegram username to fetch their details.`
+    );
+    return;
+  }
+
+  // Normalize: remove leading @ if present
+  const username = param.startsWith('@') ? param : `@${param}`;
+
+  try {
+    const chat = await ctx.api.getChat(username);
+
+    const lines: string[] = [
+      `*🔍 User Lookup — ${username}*`,
+      '',
+    ];
+
+    if ('first_name' in chat) {
+      if (chat.first_name) lines.push(`• *First Name:* ${chat.first_name}`);
+    }
+    if ('last_name' in chat && (chat as { last_name?: string }).last_name) {
+      lines.push(`• *Last Name:* ${(chat as { last_name?: string }).last_name}`);
+    }
+    if (chat.username) lines.push(`• *Username:* @${chat.username}`);
+    lines.push(`• *Telegram ID:* \`${chat.id}\``);
+    lines.push(`• *Type:* ${chat.type}`);
+
+    if ('bio' in chat && (chat as { bio?: string }).bio) {
+      lines.push(`• *Bio:* ${(chat as { bio?: string }).bio?.slice(0, 100)}`);
+    }
+    if ('description' in chat && (chat as { description?: string }).description) {
+      lines.push(`• *Description:* ${(chat as { description?: string }).description?.slice(0, 100)}`);
+    }
+
+    logger.info('Admin lookup performed', { username, resolvedId: chat.id, adminId: ctx.from?.id });
+    await safeReply(ctx, lines.join('\n'));
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.warn('Admin lookup failed', { username, error: errMsg });
+
+    if (errMsg.includes('400') || errMsg.includes('chat not found') || errMsg.includes('Bad Request')) {
+      await safeReply(
+        ctx,
+        `⚠️ *User not found:* \`${username}\`\n\nThis username doesn't exist, or the user has never interacted with Telegram in a way that makes them discoverable.`
+      );
+    } else {
+      await safeReply(ctx, `⚠️ *Lookup failed:* ${errMsg}`);
+    }
+  }
+}
+
+/**
+ * Handles the admin /logs command.
+ * Sends the current messages.txt log file to the admin.
+ */
+export async function handleAdminLogs(ctx: Context): Promise<void> {
+  await safeReply(ctx, `📋 *Fetching message log...*`);
+
+  // We need the bot instance — use ctx.api directly with sendDocument
+  try {
+    const fs = await import('fs');
+    const path = await import('path');
+    const LOG_FILE = path.resolve(process.cwd(), 'logs', 'messages.txt');
+
+    if (!fs.existsSync(LOG_FILE) || fs.statSync(LOG_FILE).size === 0) {
+      await safeReply(ctx, `ℹ️ No messages have been logged yet.`);
+      return;
+    }
+
+    const fileContent = fs.readFileSync(LOG_FILE);
+    const timestamp = new Date().toLocaleString('en-US', {
+      timeZone: env.timezone || 'Asia/Dhaka',
+    });
+
+    await ctx.api.sendDocument(
+      ctx.chat!.id,
+      new InputFile(fileContent, 'messages.txt'),
+      {
+        caption: `📋 *Celia — Message Log*\n_Generated: ${timestamp}_`,
+        parse_mode: 'Markdown',
+      }
+    );
+
+    logger.info('Admin requested message log', { adminId: ctx.from?.id });
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.warn('Failed to send log file to admin', { error: errMsg });
+    await safeReply(ctx, `⚠️ Failed to send log file: ${errMsg}`);
+  }
+}
+
+/**
+ * Handles the admin /clearlogs command.
+ * Wipes the messages.txt log file.
+ */
+export async function handleAdminClearLogs(ctx: Context): Promise<void> {
+  try {
+    clearLogFile();
+    logger.info('Admin cleared message logs', { adminId: ctx.from?.id });
+    await safeReply(ctx, `🗑️ *Message log cleared successfully.*`);
+  } catch (err) {
+    await safeReply(ctx, `⚠️ Failed to clear logs: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }

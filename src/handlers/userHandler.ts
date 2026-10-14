@@ -29,6 +29,8 @@ import {
 import { checkMessageLanguage } from '../utils/languageDetector';
 import { checkBadWords } from '../utils/badWordsDetector';
 import { registerAdminCommandsForUser } from '../bot/commands';
+import { checkPromptSecurity } from '../utils/promptSecurity';
+import { logMessageToFile } from '../utils/messageLogger';
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
@@ -343,6 +345,25 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  // ── Prompt Injection & Security Attack Detection ─────────────────────────
+  const securityCheck = checkPromptSecurity(queryToProcess);
+  if (securityCheck.isThreat) {
+    logger.warn('Prompt injection / security attack detected and blocked', {
+      userId: ctx.from?.id,
+      username: ctx.from?.username,
+      chatId: ctx.chat?.id,
+      threatType: securityCheck.threatType,
+      message: queryToProcess.slice(0, 100),
+    });
+    // Silently delete in groups, give safe decline in private
+    if (ctx.chat?.type !== 'private') {
+      try { await ctx.deleteMessage(); } catch { /* ignore */ }
+    } else {
+      await safeReply(ctx, securityCheck.safeResponse, { replyToMessage: true });
+    }
+    return;
+  }
+
   // Reject and remove non-English / Bangla / Banglish queries without replying
   const langCheck = checkMessageLanguage(queryToProcess);
   if (!langCheck.isEnglish) {
@@ -352,6 +373,18 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
       // Ignore
     }
     return;
+  }
+
+  // ── Message Logging (non-admin users only) ────────────────────────────────
+  if (!isAdmin(ctx.from?.id)) {
+    logMessageToFile({
+      userId: ctx.from?.id,
+      username: ctx.from?.username,
+      firstName: ctx.from?.first_name,
+      chatType: ctx.chat?.type || 'unknown',
+      chatId: ctx.chat?.id,
+      text: queryToProcess,
+    });
   }
 
   await sendTypingAction(ctx);
