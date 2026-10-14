@@ -707,12 +707,19 @@ async function runTests() {
   const ambigEvening = parseTimeCommand('evening');
   assert.strictEqual(ambigEvening.type, 'ambiguous', 'evening must be flagged as ambiguous');
 
-  // 15c. Explicit clock times in Asia/Dhaka
+  // 15c. Explicit clock times in Asia/Dhaka and International UTC
   const clock9am = parseTimeCommand('9:00 AM', 'Asia/Dhaka');
   assert.strictEqual(clock9am.type, 'specific_time');
 
   const clockTomorrow9am = parseTimeCommand('tomorrow 9:00 AM', 'Asia/Dhaka');
   assert.strictEqual(clockTomorrow9am.type, 'specific_time');
+
+  // International UTC/GMT command parsing
+  const clockUtc = parseTimeCommand('3:00 PM UTC', 'Asia/Dhaka');
+  assert.strictEqual(clockUtc.type, 'specific_time');
+  if (clockUtc.type === 'specific_time') {
+    assert.strictEqual(clockUtc.timezone, 'UTC', 'Must resolve explicit UTC timezone');
+  }
 
   // 15d. Subcommands
   const statusCmd = parseTimeCommand('status');
@@ -721,7 +728,7 @@ async function runTests() {
   const cancelCmd = parseTimeCommand('cancel');
   assert.strictEqual(cancelCmd.type, 'cancel');
 
-  // 15e. Format messages
+  // 15e. Format messages (Local Asia/Dhaka and International UTC)
   const dummyState = {
     status: 'temporary_disabled' as const,
     reactivateAt: new Date(Date.now() + 120 * 60 * 1000).toISOString(),
@@ -730,12 +737,15 @@ async function runTests() {
   };
   const confirmMsg = formatTimerConfirmation(dummyState, 'Asia/Dhaka');
   assert(confirmMsg.includes('Scheduled Reactivation Confirmed'), 'Must include confirmation header');
-  assert(confirmMsg.includes('Asia/Dhaka'), 'Must include timezone');
+  assert(confirmMsg.includes('Asia/Dhaka'), 'Must include local timezone');
+  assert(confirmMsg.includes('International'), 'Must include international time');
+  assert(confirmMsg.includes('UTC'), 'Must include UTC timestamp');
 
   const statusMsg = formatTimeStatus(dummyState, 'Asia/Dhaka');
   assert(statusMsg.includes('Temporarily Disabled'), 'Status message must report temporary disabled');
+  assert(statusMsg.includes('International'), 'Status message must report international timestamp');
 
-  console.log('✓ Smart timer parser, ambiguity detection, and formatting verified');
+  console.log('✓ Smart timer parser, ambiguity detection, and international formatting verified');
 
   // Test 16: Timer Expiration, Auto-Reactivation, and Server Restart Recovery
   console.log('Testing Timer Expiration, Auto-Reactivation & Restart Recovery...');

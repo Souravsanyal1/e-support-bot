@@ -8,6 +8,7 @@ import {
   formatTimerConfirmation,
   formatTimeStatus,
   formatDateTimeInTimezone,
+  formatInternationalDateTime,
   formatRemainingDuration,
 } from '../utils/timeParser';
 
@@ -200,7 +201,8 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
   if (state.status === 'temporary_disabled') {
     stateDescription = '⏸️ Temporarily Disabled';
     if (state.reactivateAt) {
-      stateDescription += ` (Reactivates at ${formatDateTimeInTimezone(new Date(state.reactivateAt), env.timezone)})`;
+      const rDate = new Date(state.reactivateAt);
+      stateDescription += ` (Reactivates: ${formatDateTimeInTimezone(rDate, env.timezone)} | ${formatInternationalDateTime(rDate)})`;
     }
   } else if (state.status === 'permanently_disabled') {
     stateDescription = '⛔ Permanently Disabled';
@@ -211,7 +213,8 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
     '',
     `*Operational State:*`,
     `• *Bot Status:* ${stateDescription}`,
-    `• *Timezone:* \`${env.timezone}\``,
+    `• *Timezone (Local):* \`${env.timezone}\``,
+    `• *Timezone (International):* \`UTC / GMT\``,
     ...(state.reactivateAt
       ? [`• *Timer Remaining:* \`${formatRemainingDuration(new Date(state.reactivateAt))}\``]
       : []),

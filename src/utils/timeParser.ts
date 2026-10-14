@@ -3,18 +3,39 @@ import { BotState } from '../bot/state';
 
 export type ParsedTimeResult =
   | { type: 'duration'; durationMinutes: number; targetDate: Date }
-  | { type: 'specific_time'; targetDate: Date; description: string }
+  | { type: 'specific_time'; targetDate: Date; description: string; timezone: string }
   | { type: 'status' }
   | { type: 'cancel' }
   | { type: 'ambiguous'; clarification: string }
   | { type: 'invalid'; error: string };
 
 /**
- * Returns date components in the specified IANA timezone.
+ * Resolves a timezone string into a valid IANA / UTC timezone name.
+ */
+export function resolveTimezone(tzInput?: string, fallback: string = env.timezone): string {
+  if (!tzInput) return fallback;
+  const cleaned = tzInput.trim();
+  const upper = cleaned.toUpperCase();
+
+  if (upper === 'UTC' || upper === 'GMT' || upper === 'Z') {
+    return 'UTC';
+  }
+
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: cleaned });
+    return cleaned;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * Returns date components in the specified IANA/UTC timezone.
  */
 export function getDatePartsInTimezone(date: Date, timezone: string) {
+  const validTz = resolveTimezone(timezone);
   const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
+    timeZone: validTz,
     year: 'numeric',
     month: 'numeric',
     day: 'numeric',
@@ -52,13 +73,14 @@ export function createDateForTimezone(
   second: number,
   timezone: string
 ): Date {
+  const validTz = resolveTimezone(timezone);
   // Construct a date string in ISO format without Z
   const pad = (n: number) => String(n).padStart(2, '0');
   const dateString = `${year}-${pad(month)}-${pad(day)}T${pad(hour)}:${pad(minute)}:${pad(second)}`;
 
   // Find the exact UTC offset for this timezone at this point in time
   const tempDate = new Date(`${dateString}Z`);
-  const localParts = getDatePartsInTimezone(tempDate, timezone);
+  const localParts = getDatePartsInTimezone(tempDate, validTz);
 
   const localTimeMs = Date.UTC(
     localParts.year,
@@ -76,14 +98,15 @@ export function createDateForTimezone(
 
 /**
  * Parses natural language input for the /time command.
+ * Supports both local time (Asia/Dhaka) and international timezones (UTC, GMT, etc.).
  */
-export function parseTimeCommand(input: string, timezone: string = env.timezone): ParsedTimeResult {
+export function parseTimeCommand(input: string, defaultTimezone: string = env.timezone): ParsedTimeResult {
   const trimmed = input.trim();
 
   if (!trimmed) {
     return {
       type: 'invalid',
-      error: 'Please provide a duration or time, e.g.:\n• `/time 2 hours`\n• `/time 30 minutes`\n• `/time 9:00 AM`\n• `/time status`\n• `/time cancel`',
+      error: 'Please provide a duration or time, e.g.:\n• `/time 2 hours`\n• `/time 30 minutes`\n• `/time 9:00 AM` (Local Asia/Dhaka)\n• `/time 9:00 AM UTC` (International Standard)\n• `/time status`\n• `/time cancel`',
     };
   }
 
@@ -108,7 +131,8 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
       clarification:
         `❓ The phrase "${trimmed}" does not specify an exact hour. To prevent scheduling mistakes, please specify the exact time:\n` +
         `• Example: \`/time tomorrow 9:00 AM\`\n` +
-        `• Example: \`/time 9:00 AM\`\n` +
+        `• Example: \`/time 9:00 AM\` (Local ${defaultTimezone})\n` +
+        `• Example: \`/time 3:00 PM UTC\` (International)\n` +
         `• Example: \`/time 2 hours\``,
     };
   }
@@ -118,7 +142,6 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
   const match = sanitized.match(durationRegex);
 
   if (match && (match[1] || match[2] || match[3] || match[4])) {
-    // Make sure entire string or significant portion matched duration
     const days = parseInt(match[1] || '0', 10);
     const hours = parseInt(match[2] || '0', 10);
     const minutes = parseInt(match[3] || '0', 10);
@@ -137,8 +160,9 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
     }
   }
 
-  // 4. Specific clock time match: e.g. "tomorrow 9:00 AM", "9:00 AM", "9:30 PM", "09:00", "21:30"
-  const clockRegex = /^(?:(tomorrow|today)\s+)?(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i;
+  // 4. Specific clock time match (with optional international timezone suffix, e.g. UTC, GMT):
+  // e.g. "tomorrow 9:00 AM", "9:00 AM", "9:30 PM", "9:00 AM UTC", "14:00 UTC", "09:00", "21:30"
+  const clockRegex = /^(?:(tomorrow|today)\s+)?(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?(?:\s+([a-z_]+(?:\/[a-z_]+)?))?$/i;
   const clockMatch = sanitized.match(clockRegex);
 
   if (clockMatch) {
@@ -146,6 +170,7 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
     let hour = parseInt(clockMatch[2], 10);
     const minute = clockMatch[3] ? parseInt(clockMatch[3], 10) : 0;
     const meridiem = clockMatch[4]?.toLowerCase();
+    const explicitTz = clockMatch[5] ? resolveTimezone(clockMatch[5], defaultTimezone) : defaultTimezone;
 
     if (minute < 0 || minute > 59) {
       return { type: 'invalid', error: `Invalid minute "${minute}". Minute must be between 0 and 59.` };
@@ -167,7 +192,7 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
     }
 
     const now = new Date();
-    const currentTzParts = getDatePartsInTimezone(now, timezone);
+    const currentTzParts = getDatePartsInTimezone(now, explicitTz);
 
     let targetYear = currentTzParts.year;
     let targetMonth = currentTzParts.month;
@@ -180,7 +205,7 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
       hour,
       minute,
       0,
-      timezone
+      explicitTz
     );
 
     // If "tomorrow" was requested, advance by 1 day
@@ -193,27 +218,29 @@ export function parseTimeCommand(input: string, timezone: string = env.timezone)
       }
     }
 
-    const formattedDesc = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${timezone})`;
+    const formattedDesc = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')} (${explicitTz})`;
 
     return {
       type: 'specific_time',
       targetDate,
       description: formattedDesc,
+      timezone: explicitTz,
     };
   }
 
   return {
     type: 'invalid',
-    error: `Could not understand time parameter: "${input}".\n\nExamples:\n• \`/time 2 minutes\`\n• \`/time 30 minutes\`\n• \`/time 2 hours\`\n• \`/time 9:00 AM\`\n• \`/time tomorrow 9:00 AM\`\n• \`/time status\`\n• \`/time cancel\``,
+    error: `Could not understand time parameter: "${input}".\n\nExamples:\n• \`/time 2 minutes\`\n• \`/time 30 minutes\`\n• \`/time 2 hours\`\n• \`/time 9:00 AM\` (Local ${defaultTimezone})\n• \`/time 3:00 PM UTC\` (International)\n• \`/time tomorrow 9:00 AM\`\n• \`/time status\`\n• \`/time cancel\``,
   };
 }
 
 /**
- * Formats a Date into a human-readable string in the given timezone.
+ * Formats a Date into a human-readable local string in the given timezone with GMT offset.
  */
 export function formatDateTimeInTimezone(date: Date, timezone: string): string {
-  return new Intl.DateTimeFormat('en-GB', {
-    timeZone: timezone,
+  const validTz = resolveTimezone(timezone);
+  const formatted = new Intl.DateTimeFormat('en-GB', {
+    timeZone: validTz,
     day: '2-digit',
     month: 'short',
     year: 'numeric',
@@ -222,6 +249,40 @@ export function formatDateTimeInTimezone(date: Date, timezone: string): string {
     second: '2-digit',
     hour12: true,
   }).format(date);
+
+  let offsetStr = '';
+  try {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: validTz,
+      timeZoneName: 'shortOffset',
+    }).formatToParts(date);
+    const tzPart = parts.find((p) => p.type === 'timeZoneName');
+    if (tzPart?.value) {
+      offsetStr = ` (${tzPart.value})`;
+    }
+  } catch {
+    // ignore
+  }
+
+  return `${formatted}${offsetStr}`;
+}
+
+/**
+ * Formats a Date into International Universal Standard format (UTC and ISO).
+ */
+export function formatInternationalDateTime(date: Date): string {
+  const utcFormatted = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'UTC',
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: true,
+  }).format(date);
+
+  return `${utcFormatted} UTC (${date.toISOString().replace('.000', '')})`;
 }
 
 /**
@@ -250,18 +311,20 @@ export function formatRemainingDuration(targetDate: Date): string {
 
 /**
  * Generates the confirmation message sent to the admin when a timer is set.
+ * Displays both local (Asia/Dhaka) and international (UTC) time.
  */
 export function formatTimerConfirmation(state: BotState, timezone: string = env.timezone): string {
   const reactivateDate = state.reactivateAt ? new Date(state.reactivateAt) : null;
-  const formattedTime = reactivateDate ? formatDateTimeInTimezone(reactivateDate, timezone) : 'None';
+  const localTime = reactivateDate ? formatDateTimeInTimezone(reactivateDate, timezone) : 'None';
+  const intlTime = reactivateDate ? formatInternationalDateTime(reactivateDate) : 'None';
   const remaining = reactivateDate ? formatRemainingDuration(reactivateDate) : 'N/A';
 
   return [
     `⏱️ *Celia — Scheduled Reactivation Confirmed*`,
     '',
     `• *Current Status:* ⏸️ Temporarily Disabled`,
-    `• *Scheduled Reactivation:* \`${formattedTime}\``,
-    `• *Timezone:* \`${timezone}\``,
+    `• *Scheduled (Local):* \`${localTime}\` [${timezone}]`,
+    `• *Scheduled (International):* \`${intlTime}\``,
     `• *Remaining Duration:* \`${remaining}\``,
     '',
     `_User-facing AI responses are now paused. The bot will automatically reactivate when the timer completes, or you can resume manually with /on._`,
@@ -270,6 +333,7 @@ export function formatTimerConfirmation(state: BotState, timezone: string = env.
 
 /**
  * Generates the status message for /time status.
+ * Displays both local (Asia/Dhaka) and international (UTC) timestamps.
  */
 export function formatTimeStatus(state: BotState, timezone: string = env.timezone): string {
   let statusEmoji = '🟢 Active';
@@ -287,18 +351,21 @@ export function formatTimeStatus(state: BotState, timezone: string = env.timezon
 
   if (state.disabledAt) {
     const disabledDate = new Date(state.disabledAt);
-    lines.push(`• *Disabled Since:* \`${formatDateTimeInTimezone(disabledDate, timezone)}\``);
+    lines.push(`• *Disabled Since (Local):* \`${formatDateTimeInTimezone(disabledDate, timezone)}\``);
+    lines.push(`• *Disabled Since (Intl/UTC):* \`${formatInternationalDateTime(disabledDate)}\``);
   }
 
   if (state.reactivateAt) {
     const reactivateDate = new Date(state.reactivateAt);
-    lines.push(`• *Scheduled Reactivation:* \`${formatDateTimeInTimezone(reactivateDate, timezone)}\``);
+    lines.push(`• *Scheduled (Local):* \`${formatDateTimeInTimezone(reactivateDate, timezone)}\` [${timezone}]`);
+    lines.push(`• *Scheduled (Intl/UTC):* \`${formatInternationalDateTime(reactivateDate)}\``);
     lines.push(`• *Remaining Duration:* \`${formatRemainingDuration(reactivateDate)}\``);
   } else if (state.status === 'temporary_disabled') {
     lines.push(`• *Scheduled Reactivation:* None (Manual /on required)`);
   }
 
-  lines.push(`• *Configured Timezone:* \`${timezone}\``);
+  lines.push(`• *Timezone (Local):* \`${timezone}\``);
+  lines.push(`• *Timezone (International):* \`UTC / GMT\``);
 
   if (state.reason) {
     lines.push(`• *Reason:* ${state.reason}`);
