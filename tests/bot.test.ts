@@ -49,6 +49,7 @@ async function runTests() {
   assert(prompt.includes('STRICT PRIVACY & INFRASTRUCTURE CONFIDENTIALITY'), 'Prompt must enforce server privacy');
   assert(prompt.includes('NEVER reveal server information'), 'Prompt must ban server disclosures');
   assert(prompt.includes('NEVER reveal personal information about developers'), 'Prompt must ban developer disclosures');
+  assert(prompt.includes('STRICT DOMAIN & ECOSYSTEM SCOPE'), 'Prompt must enforce strict Elite Force & system domain scope');
   console.log('✓ System prompt & privacy guardrails passed');
 
   // Test 4: Secret Redaction in Logs
