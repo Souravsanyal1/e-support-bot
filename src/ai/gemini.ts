@@ -7,6 +7,7 @@ import {
   formatLaunchAnnouncementContext,
   LaunchAnnouncement,
 } from './officialChannelKnowledge';
+import { conversationManager } from './conversation';
 
 // Initialize the optional Google Gen AI client if key is present
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
@@ -283,16 +284,17 @@ function getPrimaryProvider(): 'gemini' | 'openrouter' {
 export async function generateSupportResponse(
   userMessage: string,
   launchAnnouncement?: LaunchAnnouncement | null,
-  officialChannelContext?: string | null
+  officialChannelContext?: string | null,
+  userId?: number
 ): Promise<string> {
   const sanitizedPrompt = userMessage.trim();
   if (!sanitizedPrompt) {
     return "Hey! 👋 I'm Celia, your System & Group Management Admin. How can I help you today?";
   }
 
-  // User messages are used only for this response; no conversation history is
-  // retained or fed into later requests.
-  const history: Array<{ role: 'user' | 'model'; text: string }> = [];
+  // Load conversation history for private users; groups are stateless for privacy
+  const history = userId ? conversationManager.getHistory(userId) : [];
+
   const sourceContexts = [
     launchAnnouncement ? formatLaunchAnnouncementContext(launchAnnouncement) : '',
     officialChannelContext || '',
@@ -334,6 +336,12 @@ export async function generateSupportResponse(
       // Automatic fallback to the other provider
       replyText = await tryProvider(secondary);
       logger.info('Fallback AI provider responded successfully', { provider: secondary });
+    }
+
+    // Save both turns to conversation memory for private users
+    if (userId) {
+      conversationManager.addMessage(userId, 'user', sanitizedPrompt);
+      conversationManager.addMessage(userId, 'model', replyText);
     }
 
     return replyText;

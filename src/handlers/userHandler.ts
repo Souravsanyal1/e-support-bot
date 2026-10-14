@@ -249,7 +249,8 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       query,
       getLaunchAnnouncementForQuestion(query),
-      getRelevantOfficialChannelContext(query)
+      getRelevantOfficialChannelContext(query),
+      ctx.chat?.type === 'private' ? ctx.from?.id : undefined
     );
 
     // Ensure the animated sticker is visible for at least 3000ms before deletion
@@ -361,7 +362,8 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       queryToProcess,
       getLaunchAnnouncementForQuestion(queryToProcess),
-      getRelevantOfficialChannelContext(queryToProcess)
+      getRelevantOfficialChannelContext(queryToProcess),
+      ctx.chat?.type === 'private' ? ctx.from?.id : undefined
     );
 
     // Ensure the animated sticker is visible for at least 3000ms
