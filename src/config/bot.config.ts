@@ -46,12 +46,28 @@ export const PUBLIC_COMMANDS: readonly BotCommand[] = [
 export const ADMIN_COMMANDS = {
   STATUS: 'status',
   RELOAD: 'reload',
+  SYNC: 'sync',
   BROADCAST: 'broadcast',
   USERS: 'users',
   OFF: 'off',
   ON: 'on',
   TIME: 'time',
 } as const;
+
+/**
+ * Full command list registered for authorized administrators.
+ */
+export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
+  ...PUBLIC_COMMANDS,
+  { command: 'status', description: 'Server status, latency & AI models' },
+  { command: 'reload', description: 'Hot-reload training data and prompts' },
+  { command: 'sync', description: 'Force sync official channels & knowledge' },
+  { command: 'broadcast', description: 'Broadcast announcement to active users' },
+  { command: 'users', description: 'View active user sessions and statistics' },
+  { command: 'off', description: 'Disable bot responses (with optional reason)' },
+  { command: 'on', description: 'Re-enable bot responses for users' },
+  { command: 'time', description: 'Schedule temporary downtime with auto-reactivation' },
+] as const;
 
 /**
  * Centralized Language Enforcement Policy Configuration

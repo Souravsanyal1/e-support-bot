@@ -6,10 +6,23 @@ import { logger } from '../utils/logger';
  * Helper to check if a numeric user ID is an authorized admin.
  */
 export function isAdmin(userId?: number): boolean {
-  if (!userId || env.adminUserIds.size === 0) {
+  if (!userId) {
     return false;
   }
-  return env.adminUserIds.has(userId);
+  if (env.adminUserIds.has(userId)) {
+    return true;
+  }
+  // Also check runtime environment variables directly
+  const envAdmin = [process.env.TELEGRAM_ADMIN_ID, process.env.ADMIN_USER_IDS].filter(Boolean).join(',');
+  if (envAdmin) {
+    for (const rawId of envAdmin.split(',')) {
+      const parsed = parseInt(rawId.trim(), 10);
+      if (!isNaN(parsed) && parsed === userId) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 /**

@@ -28,6 +28,7 @@ import {
 } from '../ai/officialChannelKnowledge';
 import { checkMessageLanguage } from '../utils/languageDetector';
 import { checkBadWords } from '../utils/badWordsDetector';
+import { registerAdminCommandsForUser } from '../bot/commands';
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
@@ -85,6 +86,15 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  // If sender is an authorized administrator, register the full admin command menu for their chat
+  if (isAdmin(ctx.from?.id) && ctx.chat?.id) {
+    try {
+      await registerAdminCommandsForUser(ctx.api, ctx.chat.id);
+    } catch {
+      // Non-fatal
+    }
+  }
+
   const message = [
     `*${BOT_CONFIG.introduction}* 👋`,
     `Ask me about Elite Force, E-FORCE, and official updates.`,
@@ -104,15 +114,48 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  const isUserAdmin = isAdmin(ctx.from?.id);
+
+  // If sender is an admin, ensure their chat command menu is updated
+  if (isUserAdmin && ctx.chat?.id) {
+    try {
+      await registerAdminCommandsForUser(ctx.api, ctx.chat.id);
+    } catch {
+      // Non-fatal
+    }
+  }
+
   const commandList = PUBLIC_COMMANDS.map((cmd) => `• \`/${cmd.command}\` — ${cmd.description}`).join(
     '\n'
   );
 
-  const message = [
+  const adminCommandList = [
+    '• `/status` — View server status, latency, and active AI model',
+    '• `/reload` — Hot-reload training data and system prompts',
+    '• `/sync` — Force sync official channels and refresh knowledge',
+    '• `/broadcast <msg>` — Send notification broadcast to active users',
+    '• `/users` — View active user conversation stats',
+    '• `/off [reason]` — Disable bot responses temporarily or permanently',
+    '• `/on` — Re-enable bot responses',
+    '• `/time <duration>` — Schedule temporary downtime with auto-reactivation',
+  ].join('\n');
+
+  const messageParts = [
     `*${BOT_CONFIG.name} — Help & Commands Guide* 💡`,
     '',
-    `*Available Commands:*`,
+    `*Available Public Commands:*`,
     commandList,
+  ];
+
+  if (isUserAdmin) {
+    messageParts.push(
+      '',
+      `*🛡️ Special Administrator Commands:*`,
+      adminCommandList
+    );
+  }
+
+  messageParts.push(
     '',
     `*Direct Chat & Image Support:*`,
     `You can chat directly or send photos/screenshots with questions! I will analyze them and reply in clear English.`,
@@ -122,10 +165,10 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     '',
     `*Important Rules:*`,
     `• E-FORCE launch and listing dates are in development and will only be shared via official channels.`,
-    `• No price speculation, financial advice, or profit guarantees are provided.`,
-  ].join('\n');
+    `• No price speculation, financial advice, or profit guarantees are provided.`
+  );
 
-  await safeReply(ctx, message);
+  await safeReply(ctx, messageParts.join('\n'));
 }
 
 /**
