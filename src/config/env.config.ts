@@ -43,6 +43,27 @@ export interface AppConfig {
   readonly imageModerationConfidenceThreshold: number;
   readonly imageModerationTimeoutMs: number;
   readonly imageModerationWarningMessage: string;
+  // ── English-Only Language Enforcement ──────────────────────────────────────
+  readonly englishOnlyMode: boolean;
+  /** If true, admins are exempt from English-only enforcement. */
+  readonly englishOnlyAdminExempt: boolean;
+  /** If true, confirmed non-English group messages are deleted. */
+  readonly englishOnlyDeleteNonEnglish: boolean;
+  /** If true, send a short English warning after deleting a non-English message. */
+  readonly englishOnlyWarnUser: boolean;
+  /** Minimum language-detection confidence (0-1) before applying deletion. */
+  readonly englishOnlyMinConfidence: number;
+  // ── Profanity & Abuse Moderation ──────────────────────────────────────────
+  readonly profanityFilterEnabled: boolean;
+  readonly profanityAutoDelete: boolean;
+  /** If true, admins are exempt from profanity auto-deletion. */
+  readonly profanityAdminExempt: boolean;
+  /** If true, send a short warning after deleting abusive message. */
+  readonly profanityWarnUser: boolean;
+  /** Strict mode catches medium-severity words in addition to high/critical. */
+  readonly profanityStrictMode: boolean;
+  /** If true, repeat offenders are escalated to primary admins. */
+  readonly profanityRepeatOffenderEscalation: boolean;
 }
 
 /**
@@ -230,6 +251,33 @@ function loadAndValidateConfig(): AppConfig {
   const scanAllGroupMessages =
     process.env.SCAN_ALL_GROUP_MESSAGES?.trim().toLowerCase() === 'true';
 
+  // ── English-Only Language Enforcement ──────────────────────────────────────
+  const englishOnlyMode =
+    process.env.ENGLISH_ONLY_MODE?.trim().toLowerCase() !== 'false'; // default: true
+  const englishOnlyAdminExempt =
+    process.env.ENGLISH_ONLY_ADMIN_EXEMPT?.trim().toLowerCase() !== 'false'; // default: true
+  const englishOnlyDeleteNonEnglish =
+    process.env.ENGLISH_ONLY_DELETE_NON_ENGLISH?.trim().toLowerCase() !== 'false'; // default: true
+  const englishOnlyWarnUser =
+    process.env.ENGLISH_ONLY_WARN_USER?.trim().toLowerCase() === 'true'; // default: false
+  const rawEngConf = parseFloat(process.env.ENGLISH_ONLY_MIN_CONFIDENCE?.trim() || '0.70');
+  const englishOnlyMinConfidence =
+    isNaN(rawEngConf) || rawEngConf < 0 || rawEngConf > 1 ? 0.70 : rawEngConf;
+
+  // ── Profanity & Abuse Moderation ──────────────────────────────────────────
+  const profanityFilterEnabled =
+    process.env.PROFANITY_FILTER_ENABLED?.trim().toLowerCase() !== 'false'; // default: true
+  const profanityAutoDelete =
+    process.env.PROFANITY_AUTO_DELETE?.trim().toLowerCase() !== 'false'; // default: true
+  const profanityAdminExempt =
+    process.env.PROFANITY_ADMIN_EXEMPT?.trim().toLowerCase() !== 'false'; // default: true
+  const profanityWarnUser =
+    process.env.PROFANITY_WARN_USER?.trim().toLowerCase() === 'true'; // default: false
+  const profanityStrictMode =
+    process.env.PROFANITY_STRICT_MODE?.trim().toLowerCase() !== 'false'; // default: true
+  const profanityRepeatOffenderEscalation =
+    process.env.PROFANITY_REPEAT_OFFENDER_ESCALATION?.trim().toLowerCase() !== 'false'; // default: true
+
   return {
     telegramBotToken,
     aiProvider,
@@ -265,8 +313,22 @@ function loadAndValidateConfig(): AppConfig {
     imageModerationConfidenceThreshold,
     imageModerationTimeoutMs,
     imageModerationWarningMessage,
+    // English-only enforcement
+    englishOnlyMode,
+    englishOnlyAdminExempt,
+    englishOnlyDeleteNonEnglish,
+    englishOnlyWarnUser,
+    englishOnlyMinConfidence,
+    // Profanity & abuse moderation
+    profanityFilterEnabled,
+    profanityAutoDelete,
+    profanityAdminExempt,
+    profanityWarnUser,
+    profanityStrictMode,
+    profanityRepeatOffenderEscalation,
   };
 }
+
 
 export const env: AppConfig = loadAndValidateConfig();
 
