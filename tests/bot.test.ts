@@ -72,6 +72,40 @@ async function runTests() {
   }
   console.log('✓ Gaming NFT knowledge and safety passed');
 
+  // Official channel answers search only the latest 100 posts received by the bot.
+  console.log('Testing official channel post selection...');
+  const officialPosts = await import('../src/ai/officialChannelKnowledge');
+  assert.strictEqual(
+    officialPosts.extractOfficialPostText({ caption: 'Launch details are in this caption.' }),
+    'Launch details are in this caption.',
+    'Text captions attached to channel media should be read'
+  );
+  assert.strictEqual(
+    officialPosts.extractOfficialPostText({ caption: undefined }),
+    '',
+    'A media-only channel post should contribute no image content to AI context'
+  );
+  const postFixture = Array.from({ length: 101 }, (_, index) => ({
+    messageId: index + 1,
+    postedAt: index + 1,
+    text: index === 0 ? 'Older airdrop announcement' : `Unrelated official update ${index + 1}`,
+  }));
+  const latestPosts = officialPosts.selectLatestOfficialPosts(postFixture);
+  assert.strictEqual(latestPosts.length, 100, 'Should select at most the latest 100 available posts');
+  assert.strictEqual(latestPosts[0].messageId, 2, 'Posts older than the latest 100 must be excluded');
+  assert.deepStrictEqual(
+    officialPosts.selectRelevantOfficialPosts('airdrop announcement', postFixture),
+    [],
+    'An announcement outside the latest 100 must not be used as current information'
+  );
+  postFixture[100].text = 'Latest airdrop announcement with verified details';
+  assert.strictEqual(
+    officialPosts.selectRelevantOfficialPosts('airdrop announcement', postFixture)[0]?.messageId,
+    101,
+    'Relevant current official posts should be selected from the latest 100'
+  );
+  console.log('✓ Official channel post selection passed');
+
   // Dynamically import modules after environment variables are set
   const { sanitizeInputString } = await import('../src/middleware/sanitizer');
   const { splitMessage } = await import('../src/utils/telegram');

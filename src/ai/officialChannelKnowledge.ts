@@ -20,7 +20,8 @@ const TRAINING_FILE_PATH = path.resolve(process.cwd(), 'AI_TRAINING_DATA.md');
 const START_MARKER = '<!-- AUTO_SYNC_OFFICIAL_CHANNEL_START -->';
 const END_MARKER = '<!-- AUTO_SYNC_OFFICIAL_CHANNEL_END -->';
 const MAX_POSTS = 100;
-const MAX_SYNCED_TEXT_LENGTH = 40000;
+const RECENT_POST_WINDOW = MAX_POSTS;
+const MAX_SYNCED_TEXT_LENGTH = 64000;
 const MAX_POST_LENGTH = 4096;
 const LAUNCH_TERMS = /\b(?:launch(?:ing)?|go[\s-]?live|listing|listed|presale|pre[\s-]?launch|token launch)\b|লঞ্চ|উদ্বোধন|চালু|লিস্টিং/i;
 const LAUNCH_QUESTION_TERMS = /\b(?:launch|launching|go[\s-]?live|listing|listed|release)\b|\bwhen\b.{0,45}\b(?:token|e[\s-]?force|launch)\b|\b(?:token|e[\s-]?force)\b.{0,45}\b(?:when|date|time)\b|কবে|লঞ্চ|তারিখ|চালু হবে/i;
@@ -60,6 +61,21 @@ function loadPosts(): OfficialChannelPost[] {
 
 let officialPosts = loadPosts();
 
+/** Returns the most recent official posts currently received and persisted by the bot. */
+export function selectLatestOfficialPosts(
+  posts: OfficialChannelPost[],
+  limit = RECENT_POST_WINDOW
+): OfficialChannelPost[] {
+  if (limit <= 0) return [];
+  return [...posts]
+    .sort((a, b) => a.postedAt - b.postedAt || a.messageId - b.messageId)
+    .slice(-Math.max(0, limit));
+}
+
+function getLatestOfficialPosts(): OfficialChannelPost[] {
+  return selectLatestOfficialPosts(officialPosts);
+}
+
 function persistPosts(): void {
   try {
     fs.mkdirSync(path.dirname(STATE_PATH), { recursive: true });
@@ -74,9 +90,9 @@ function persistPosts(): void {
 function buildTrainingBlock(): string {
   const selectedNewestFirst: OfficialChannelPost[] = [];
   let selectedLength = 0;
-  for (const post of [...officialPosts].reverse()) {
-    if (selectedNewestFirst.length >= MAX_POSTS) break;
-    if (selectedLength + post.text.length > MAX_SYNCED_TEXT_LENGTH) continue;
+  for (const post of getLatestOfficialPosts().reverse()) {
+    if (!post.text.trim()) continue;
+    if (selectedLength + post.text.length > MAX_SYNCED_TEXT_LENGTH) break;
     selectedNewestFirst.push(post);
     selectedLength += post.text.length;
   }
@@ -126,21 +142,14 @@ function updateTrainingFile(): void {
 }
 
 function syncPost(message: Message, edited: boolean): void {
-  const text = (message.text ?? message.caption ?? '')
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
-    .replaceAll(START_MARKER, '[reserved sync marker]')
-    .replaceAll(END_MARKER, '[reserved sync marker]')
-    .trim()
-    .slice(0, MAX_POST_LENGTH);
+  // Read plain text or a media caption only. Never download or inspect attached media.
+  const text = extractOfficialPostText(message);
 
   const existingIndex = officialPosts.findIndex((post) => post.messageId === message.message_id);
   if (!text) {
-    if (edited && existingIndex >= 0) {
-      officialPosts.splice(existingIndex, 1);
-      persistPosts();
-      updateTrainingFile();
-    }
-    return;
+    // Keep a blank record for non-text posts so they still occupy a slot in the
+    // latest-100 window, without retaining or analyzing their image/video data.
+    if (!edited && existingIndex >= 0) return;
   }
 
   const record: OfficialChannelPost = {
@@ -153,13 +162,27 @@ function syncPost(message: Message, edited: boolean): void {
   else officialPosts.push(record);
 
   officialPosts.sort((a, b) => a.postedAt - b.postedAt || a.messageId - b.messageId);
+  if (officialPosts.length > MAX_POSTS) {
+    officialPosts = officialPosts.slice(-MAX_POSTS);
+  }
 
   persistPosts();
   updateTrainingFile();
   logger.info('Synchronized a post from @Elite_Force_Official', {
     messageId: message.message_id,
+    hasText: Boolean(text),
     savedPostCount: officialPosts.length,
   });
+}
+
+/** Extracts only channel post text/caption; media payloads are intentionally ignored. */
+export function extractOfficialPostText(message: Pick<Message, 'text' | 'caption'>): string {
+  return (message.text ?? message.caption ?? '')
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '')
+    .replaceAll(START_MARKER, '[reserved sync marker]')
+    .replaceAll(END_MARKER, '[reserved sync marker]')
+    .trim()
+    .slice(0, MAX_POST_LENGTH);
 }
 
 /**
@@ -177,7 +200,7 @@ export function getLaunchAnnouncementForQuestion(
 ): LaunchAnnouncement | null {
   if (!LAUNCH_QUESTION_TERMS.test(question)) return null;
 
-  const post = [...officialPosts].reverse().find((item) => LAUNCH_TERMS.test(item.text));
+  const post = getLatestOfficialPosts().reverse().find((item) => LAUNCH_TERMS.test(item.text));
   if (!post) return null;
   return { ...post, sourceLabel: '@Elite_Force_Official' };
 }
@@ -190,19 +213,23 @@ const SEARCH_STOP_WORDS = new Set([
 ]);
 
 /**
- * Finds a few relevant posts from the full local archive for the current
- * question. The question is used only for this lookup and is never persisted.
+ * Selects relevant posts only from the latest 100 locally received official
+ * channel posts. The question is used only for this lookup and never persisted.
  */
-export function getRelevantOfficialChannelContext(question: string): string | null {
+export function selectRelevantOfficialPosts(
+  question: string,
+  posts: OfficialChannelPost[],
+  maxResults = 3
+): OfficialChannelPost[] {
   const terms = Array.from(
     new Set(
       (question.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])
         .filter((term) => term.length >= 3 && !SEARCH_STOP_WORDS.has(term))
     )
   );
-  if (terms.length === 0 || officialPosts.length === 0) return null;
+  if (terms.length === 0 || posts.length === 0) return [];
 
-  const relevant = officialPosts
+  return selectLatestOfficialPosts(posts, RECENT_POST_WINDOW)
     .map((post) => {
       const text = post.text.toLowerCase();
       const score = terms.reduce((total, term) => {
@@ -213,9 +240,13 @@ export function getRelevantOfficialChannelContext(question: string): string | nu
     })
     .filter((item) => item.score > 0)
     .sort((a, b) => b.score - a.score || b.post.postedAt - a.post.postedAt)
-    .slice(0, 3)
+    .slice(0, Math.max(0, maxResults))
     .map((item) => item.post)
     .sort((a, b) => a.postedAt - b.postedAt);
+}
+
+export function getRelevantOfficialChannelContext(question: string): string | null {
+  const relevant = selectRelevantOfficialPosts(question, officialPosts);
 
   if (relevant.length === 0) return null;
   const entries = relevant.map((post) => ({
