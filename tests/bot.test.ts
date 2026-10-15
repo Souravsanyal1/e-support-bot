@@ -182,6 +182,7 @@ async function runTests() {
     'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@EliteForce_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Claim opens after the official snapshot."}]'
   );
   assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
+  assert(!readableFallback.startsWith('The official channel confirms'), 'Provider fallback should answer directly without a repetitive source label');
   assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
   const concisePostFallback = getOfficialPostFallbackResponse(
     'When can I claim?',

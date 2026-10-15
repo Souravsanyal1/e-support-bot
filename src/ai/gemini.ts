@@ -199,9 +199,7 @@ function getOfficialPostFallback(context?: string | null, question = ''): string
       })
       .filter(Boolean);
     if (!posts.length) return null;
-    return posts.length === 1
-      ? `The official channel confirms: ${posts[0]}`
-      : `The official channel confirms: ${posts.slice(0, 2).join(' ')}`;
+    return posts.slice(0, 2).join(' ');
   } catch {
     return null;
   }
