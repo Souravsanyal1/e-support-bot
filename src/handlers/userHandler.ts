@@ -243,17 +243,6 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     return;
   }
 
-  // Reject and remove non-English / Bangla / Banglish queries without replying
-  const langCheck = checkMessageLanguage(query);
-  if (!langCheck.isEnglish) {
-    try {
-      await ctx.deleteMessage();
-    } catch {
-      // Ignore
-    }
-    return;
-  }
-
   await sendTypingAction(ctx);
   const startTime = Date.now();
   const loadingStickerId = await sendLoadingSticker(ctx);
@@ -262,7 +251,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       query,
       getLaunchAnnouncementForQuestion(query),
-      [getRelevantOfficialChannelContext(query), getGamingNftContextForQuestion(query)].filter(Boolean).join('\n\n') || null,
+      getRelevantOfficialChannelContext(query),
       ctx.chat?.type === 'private' ? ctx.from?.id : undefined
     );
 
@@ -404,17 +393,6 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
-  // Reject and remove non-English / Bangla / Banglish queries without replying
-  const langCheck = checkMessageLanguage(queryToProcess);
-  if (!langCheck.isEnglish) {
-    try {
-      await ctx.deleteMessage();
-    } catch {
-      // Ignore
-    }
-    return;
-  }
-
   // ── Message Logging (non-admin users only) ────────────────────────────────
   if (!isAdmin(ctx.from?.id)) {
     logMessageToFile({
@@ -435,8 +413,9 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       queryToProcess,
       getLaunchAnnouncementForQuestion(queryToProcess),
-      [getRelevantOfficialChannelContext(queryToProcess), getGamingNftContextForQuestion(queryToProcess)].filter(Boolean).join('\n\n') || null,
-      ctx.chat?.type === 'private' ? ctx.from?.id : undefined
+      getRelevantOfficialChannelContext(queryToProcess),
+      ctx.chat?.type === 'private' ? ctx.from?.id : undefined,
+      isReplyToBot ? ctx.message?.reply_to_message?.text : undefined
     );
 
     // Ensure the animated sticker is visible for at least 3000ms

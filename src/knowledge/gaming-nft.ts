@@ -87,9 +87,13 @@ function confirmedFeatureFacts(feature: GamingNftFeature): string[] {
   return facts;
 }
 
+/** Returns only facts backed by an authorized status and an official reference. */
+export function getConfirmedGamingNftFacts(): string[] {
+  return loadGamingNftRegistry().features.flatMap(confirmedFeatureFacts);
+}
+
 export function getGamingNftKnowledgeContext(): string {
-  const registry = loadGamingNftRegistry();
-  const facts = registry.features.flatMap(confirmedFeatureFacts);
+  const facts = getConfirmedGamingNftFacts();
   return [
     'GAMING NFT KNOWLEDGE AND SAFETY RULES',
     'A Gaming NFT may represent a digital collectible, in-game item, membership, access right, achievement, or other blockchain utility depending on a project implementation. This is general background, not a claim that Elite Force has implemented any such feature.',
