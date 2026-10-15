@@ -440,10 +440,11 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const bestPhoto = photos[photos.length - 1];
     fileId = bestPhoto.file_id;
     fileSize = bestPhoto.file_size || 0;
-  } else if (doc && doc.mime_type?.startsWith('image/')) {
+  } else if (doc) {
+    // Accept any document routed here by bot.ts image detection
     fileId = doc.file_id;
     fileSize = doc.file_size || 0;
-    defaultMime = doc.mime_type;
+    defaultMime = doc.mime_type || 'image/jpeg';
   } else {
     return;
   }
@@ -720,3 +721,63 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
     await safeReply(ctx, welcome);
   }
 }
+
+/**
+ * Handles image files sent as documents ("Send as file" / uncompressed).
+ *
+ * Telegram routes these as `message:document` rather than `message:photo`.
+ * This handler ensures ALL image formats (jpg, png, gif, webp, bmp, heic, avif, etc.)
+ * are caught and instantly removed from groups — regardless of whether
+ * Telegram has set a mime_type on the document or not.
+ *
+ * In private chats, the image is passed to the AI vision handler for analysis.
+ */
+export async function handleDocumentAsImage(ctx: Context): Promise<void> {
+  if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
+    return;
+  }
+
+  const doc = ctx.message?.document;
+  if (!doc) return;
+
+  const messageId = ctx.message?.message_id;
+  if (messageId && isMessageAlreadyProcessed(messageId)) return;
+  if (messageId) markMessageAsProcessed(messageId);
+
+  const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
+  const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
+
+  // ── INSTANT GROUP REMOVAL — fires before any AI processing ─────────────────
+  if (isGroup && GROUP_MEDIA_POLICY.blockAllImagesInGroups && !isSenderAdmin) {
+    try {
+      await ctx.deleteMessage();
+      logger.info('Deleted document-image from group (format-agnostic policy)', {
+        chatId: ctx.chat?.id,
+        messageId: ctx.message?.message_id,
+        fromUserId: ctx.from?.id,
+        fileName: doc.file_name,
+        mimeType: doc.mime_type,
+      });
+    } catch (err) {
+      logger.warn('Failed to delete document-image from group (bot may lack delete permissions)', {
+        chatId: ctx.chat?.id,
+        messageId: ctx.message?.message_id,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+
+    try {
+      const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
+      if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
+        scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+      }
+    } catch {
+      // Non-fatal
+    }
+    return;
+  }
+
+  // ── Private chat: pass to standard photo/vision handler ────────────────────
+  await handlePhotoMessage(ctx);
+}
+

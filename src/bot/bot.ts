@@ -14,6 +14,7 @@ import {
   handleAskCommand,
   handleTextMessage,
   handlePhotoMessage,
+  handleDocumentAsImage,
   handleChannelPost,
   handleNewChatMembers,
 } from '../handlers/userHandler';
@@ -30,6 +31,36 @@ import {
   handleAdminLogs,
   handleAdminClearLogs,
 } from '../handlers/adminHandler';
+
+/**
+ * Image MIME types and file extensions that should be treated as images.
+ * Covers all common formats Telegram supports.
+ */
+const IMAGE_MIME_PREFIXES = ['image/'];
+const IMAGE_EXTENSIONS = [
+  '.jpg', '.jpeg', '.png', '.gif', '.webp',
+  '.bmp', '.tiff', '.tif', '.svg', '.heic',
+  '.heif', '.avif', '.ico', '.jfif',
+];
+
+/**
+ * Returns true if a Telegram document message is an image,
+ * determined by mime_type OR file extension — whichever is available.
+ */
+function isImageDocument(mimeType?: string | null, fileName?: string | null): boolean {
+  if (mimeType) {
+    for (const prefix of IMAGE_MIME_PREFIXES) {
+      if (mimeType.startsWith(prefix)) return true;
+    }
+  }
+  if (fileName) {
+    const lower = fileName.toLowerCase();
+    for (const ext of IMAGE_EXTENSIONS) {
+      if (lower.endsWith(ext)) return true;
+    }
+  }
+  return false;
+}
 
 /**
  * Initializes and configures the GrammY Telegram Bot instance.
@@ -94,11 +125,16 @@ export function createBot(): Bot {
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);
 
-  // 6. User Photo & Image Analysis
+  // 6. User Photo & Image Moderation
+  // Telegram sends compressed photos as 'photo' type
   bot.on('message:photo', handlePhotoMessage);
+
+  // Telegram sends uncompressed / "Send as file" images as 'document' type.
+  // We detect images by BOTH mime_type AND file extension to catch every format.
   bot.on('message:document', async (ctx, next) => {
-    if (ctx.message?.document?.mime_type?.startsWith('image/')) {
-      await handlePhotoMessage(ctx);
+    const doc = ctx.message?.document;
+    if (isImageDocument(doc?.mime_type, doc?.file_name)) {
+      await handleDocumentAsImage(ctx);
     } else {
       await next();
     }
