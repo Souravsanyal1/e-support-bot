@@ -13,6 +13,23 @@ async function runTests() {
   const fs = await import('fs');
   const path = await import('path');
 
+  console.log('Testing paused-message queue ordering...');
+  const pausedQueue = await import('../src/services/pausedMessageQueue');
+  const pausedCtx = (updateId: number, messageId: number, text: string) => ({
+    update: { update_id: updateId },
+    message: { message_id: messageId, text },
+    chat: { id: 900001, type: 'private' },
+  } as unknown as Context);
+  assert.strictEqual(pausedQueue.queuePausedMessage(pausedCtx(7001, 11, 'First question?')), true);
+  assert.strictEqual(pausedQueue.queuePausedMessage(pausedCtx(7002, 12, 'Second question?')), true);
+  assert.strictEqual(pausedQueue.queuePausedMessage(pausedCtx(7003, 13, '/on')), false, 'Commands must not be held in the user reply queue');
+  const replayedPausedMessages: string[] = [];
+  await pausedQueue.replayPausedMessages(async (ctx) => {
+    replayedPausedMessages.push(ctx.message?.text ?? '');
+  });
+  assert.deepStrictEqual(replayedPausedMessages, ['First question?', 'Second question?'], 'Paused messages must replay one at a time in arrival order');
+  console.log('✓ Paused-message queue ordering passed');
+
   // Gaming NFT topic, safe defaults, intent classification, and authorized registry updates
   console.log('Testing Gaming NFT knowledge and safety...');
   const gamingNftPath = path.resolve(process.cwd(), 'knowledge/gaming-nft.json');

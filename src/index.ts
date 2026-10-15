@@ -145,7 +145,7 @@ async function main(): Promise<void> {
         if (env.webhookUrl) {
           await bot.api.setWebhook(env.webhookUrl, {
             secret_token: env.webhookSecret,
-            drop_pending_updates: true,
+            drop_pending_updates: false,
           });
           logger.info(`Telegram webhook successfully configured at ${env.webhookUrl}`);
         }
@@ -182,8 +182,8 @@ async function main(): Promise<void> {
       try {
         // Aggressively clear any existing webhook/polling session before starting
         try {
-          await bot.api.deleteWebhook({ drop_pending_updates: true });
-          logger.info('Cleared previous webhooks; polling initialized.');
+          await bot.api.deleteWebhook({ drop_pending_updates: false });
+          logger.info('Cleared previous webhooks without dropping pending updates; polling initialized.');
         } catch (delErr) {
           logger.warn('Notice clearing webhooks (will continue to start polling)', {
             error: delErr instanceof Error ? delErr.message : String(delErr),
@@ -246,7 +246,7 @@ async function main(): Promise<void> {
           );
           // Force-kill the competing session
           try {
-            await bot.api.deleteWebhook({ drop_pending_updates: true });
+            await bot.api.deleteWebhook({ drop_pending_updates: false });
           } catch {
             // Best-effort; ignore if it also fails
           }

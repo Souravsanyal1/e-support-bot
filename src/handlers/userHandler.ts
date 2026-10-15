@@ -370,7 +370,10 @@ export function shouldRespondInGroup(ctx: Context, text: string): boolean {
 /**
  * Handles standard incoming text messages (natural conversation).
  */
-export async function handleTextMessage(ctx: Context): Promise<void> {
+export async function handleTextMessage(
+  ctx: Context,
+  options: { replayingPausedMessage?: boolean } = {}
+): Promise<void> {
   if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
     return;
   }
@@ -404,7 +407,8 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     chatId: ctx.chat?.id ?? 0,
   });
 
-  if (!triggerDecision.shouldReply) {
+  const replayedRepeat = options.replayingPausedMessage && triggerDecision.reason === 'repeat_spam_guard';
+  if (!triggerDecision.shouldReply && !replayedRepeat) {
     logger.debug('Smart trigger: message ignored', {
       reason: triggerDecision.reason,
       chatId: ctx.chat?.id,

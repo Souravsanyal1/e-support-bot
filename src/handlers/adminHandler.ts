@@ -9,6 +9,8 @@ import { clearLogFile } from '../utils/messageLogger';
 import { languageModeManager } from '../bot/languageMode';
 import { subAdminManager } from '../services/subAdminManager';
 import { registerAdminCommandsForUser } from '../bot/commands';
+import { replayPausedMessages } from '../services/pausedMessageQueue';
+import { handleTextMessage } from './userHandler';
 import {
   parseTimeCommand,
   formatTimerConfirmation,
@@ -109,6 +111,11 @@ export async function handleAdminOn(ctx: Context): Promise<void> {
 
   logger.info('Admin executed /on', { userId });
   await safeReply(ctx, responseText);
+  void replayPausedMessages((messageCtx) => handleTextMessage(messageCtx, { replayingPausedMessage: true })).then((count) => {
+    logger.info('Finished replaying messages queued while bot was paused', { count });
+  }).catch((error) => {
+    logger.error('Failed to replay paused messages after /on', error);
+  });
 }
 
 /**

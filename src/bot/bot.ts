@@ -41,6 +41,8 @@ import {
   handlePointCommand,
   handleQuizCallback,
 } from '../handlers/quizHandler';
+import { botStateManager } from './state';
+import { queuePausedMessage, replayPausedMessages } from '../services/pausedMessageQueue';
 
 /**
  * Initializes and configures the GrammY Telegram Bot instance.
@@ -78,6 +80,19 @@ export function createBot(): Bot {
   bot.use(sanitizeMessageMiddleware);
   bot.use(languageFilterMiddleware);
   bot.use(badWordsFilterMiddleware);
+  // Queue valid text updates during /off; command messages still reach handlers
+  // so an administrator can use /on to resume the bot.
+  bot.use(async (ctx, next) => {
+    if (botStateManager.isUserFacingActive()) {
+      await next();
+      return;
+    }
+    if (queuePausedMessage(ctx)) return;
+    await next();
+  });
+  botStateManager.setOnReactivateCallback(async () => {
+    await replayPausedMessages((ctx) => handleTextMessage(ctx, { replayingPausedMessage: true }));
+  });
 
   // Channel updates are registered explicitly for Telegram polling/webhooks.
   // These handlers only sync official posts and never call next or send a reply.
@@ -113,7 +128,7 @@ export function createBot(): Bot {
   bot.command('limit', requireAdmin, handleAdminLimit);
 
   // 5. Natural Conversational Text Messages
-  bot.on('message:text', handleTextMessage);
+  bot.on('message:text', (ctx) => handleTextMessage(ctx));
 
   // 6. User Photo & Image Moderation
   // Telegram sends compressed photos as 'photo' type
