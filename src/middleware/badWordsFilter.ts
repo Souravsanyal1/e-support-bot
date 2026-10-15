@@ -14,11 +14,9 @@ type BadWordsFilterSettings = Pick<AppConfig,
 /**
  * Global English Bad Words & Profanity Moderation Middleware.
  *
- * Rules:
- * - If a message contains abusive language, profanity, swear words, slurs, or vulgar bad words:
- *   -> Instantly deletes / removes the message from the chat.
- *   -> Completely suppresses any reply (no answer or error sent).
- * - Only respectful, clean messages are permitted to proceed.
+ * Enforces configured severity, strict-mode, deletion, warning, and
+ * admin-exemption settings. Medium-severity findings pass when strict mode is
+ * disabled; blocked messages never reach AI handlers.
  */
 export async function badWordsFilterMiddleware(
   ctx: Context,
@@ -116,7 +114,7 @@ export async function badWordsFilterMiddleware(
       }
     }
 
-    logger.info('Moderating bad word / profanity message in English (deleting without reply)', {
+    logger.info('Moderating message under configured profanity policy', {
       chatId: ctx.chat?.id,
       messageId: ctx.msg?.message_id,
       fromUserId: ctx.from?.id,

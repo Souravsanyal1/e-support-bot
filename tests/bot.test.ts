@@ -101,7 +101,7 @@ async function runTests() {
   // Test 3: System Prompt Generation & Privacy Guardrails
   console.log('Testing System Prompt Generation & Privacy Guardrails...');
   const prompt = buildSystemPrompt();
-  assert(prompt.includes('Elite Force AI'), 'Prompt must include bot name');
+  assert(prompt.includes("Elite Force's AI support assistant"), 'Prompt must identify the assistant transparently');
   assert(prompt.includes('ENGLISH ONLY'), 'Prompt must enforce English-only response rule');
   assert(prompt.includes('E-FORCE'), 'Prompt must include E-FORCE token details');
   assert(prompt.includes('https://t.me/Elite_Force_Official'), 'Prompt must include official Telegram channel');
@@ -1191,14 +1191,29 @@ async function runTests() {
   const currentPrompt = buildSystemPrompt();
   assert(currentPrompt.includes('DO NOT REPEAT YOUR INTRODUCTION'), 'Prompt must instruct against repeating introduction');
   assert(currentPrompt.includes('DO NOT start regular replies with "I\'m Celia, your System & Group Management Admin."'), 'Must ban generic intro in regular replies');
+  assert(currentPrompt.includes('simple questions usually need 1–2 short sentences'), 'Reply length should adapt to question complexity');
+  assert(currentPrompt.includes('Use contractions and everyday wording'), 'Prompt should encourage natural conversational English');
+  assert(currentPrompt.includes('configured moderation policy'), 'Prompt should defer profanity handling to configured moderation');
+  assert(!currentPrompt.includes('Messages with bad words are automatically removed/deleted'), 'Prompt must not contradict configurable profanity moderation');
 
-  const { generateSupportResponse } = await import('../src/ai/gemini');
+  const { generateSupportResponse, getEmergencyKnowledgeResponse } = await import('../src/ai/gemini');
   // Test emergency static response for casual greeting vs identity query
   const greetingResponse = await generateSupportResponse('hello');
   assert(!greetingResponse.startsWith("I'm Celia, your System & Group Management Admin."), 'Greetings must NOT start with repetitive Celia intro');
 
   const identityResponse = await generateSupportResponse('who are you?');
-  assert(identityResponse.includes("I'm Celia, your System & Group Management Admin."), 'Explicit identity query must identify as Celia');
+  assert(identityResponse.includes("I'm Celia, Elite Force's AI support assistant."), 'Explicit identity query must identify Celia honestly as an AI assistant');
+  assert(greetingResponse.split(/[.!?]/).filter(Boolean).length <= 2, 'Greeting fallback should stay short and conversational');
+  const nftUnknownResponse = getEmergencyKnowledgeResponse('How many Elite Force Gaming NFTs will there be?');
+  assert(nftUnknownResponse.includes("hasn't confirmed"), 'Unknown Gaming NFT details should be described as unconfirmed');
+  assert(nftUnknownResponse.length < 300, 'Simple Gaming NFT fallback should stay concise');
+  const nftLinkResponse = getEmergencyKnowledgeResponse('Where is the official Gaming NFT claim link?');
+  assert(nftLinkResponse.includes('https://t.me/Elite_Force_Official'), 'NFT link fallback should direct users to the official channel');
+  assert(nftLinkResponse.includes('seed phrase'), 'NFT claim fallback should retain wallet safety guidance');
+  const launchUnknownResponse = getEmergencyKnowledgeResponse('When will E-FORCE launch?');
+  assert(launchUnknownResponse.includes("don't have a verified announcement"), 'Unknown launch information should not be guessed');
+  const ownerResponse = getEmergencyKnowledgeResponse('Who is the owner?');
+  assert(!ownerResponse.includes('@princesourav80') && !ownerResponse.includes('@kirit_1'), 'Fallback must not disclose owner/team identity');
   console.log('✓ Non-repetitive introduction guardrail passed');
 
   // Test 20: OpenAI Moderation → Vision Architecture (moderation catches NSFW, vision only for clean images)
@@ -1210,7 +1225,8 @@ async function runTests() {
   // Vision prompt must NOT contain NSFW detection (that's OpenAI's job now)
   assert(!visionPrompt.includes('NUDITY'), 'Vision prompt must NOT contain nudity detection logic (OpenAI handles it)');
   assert(visionPrompt.includes('IMAGE ANALYSIS GUIDELINES'), 'Vision prompt must focus on image analysis');
-  assert(visionPrompt.includes('DO NOT start your response with "I\'m Celia'), 'Vision prompt must prevent repetitive intro');
+  assert(visionPrompt.includes('canned greeting or self-introduction'), 'Vision prompt must prevent repetitive intros');
+  assert(visionPrompt.includes('warm and direct'), 'Vision responses should use the shared natural tone');
   assert(visionPrompt.includes('already been verified as safe'), 'Vision prompt must confirm image is pre-moderated');
 
   // isOpenAIModerationAvailable returns false when OPENAI_API_KEY is not configured (test env)

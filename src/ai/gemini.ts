@@ -17,7 +17,7 @@ const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : nu
  * Emergency static knowledge fallback when both AI APIs are unavailable or exhausted.
  * Ensures the bot NEVER sends a generic connection error message.
  */
-function getEmergencyKnowledgeResponse(
+export function getEmergencyKnowledgeResponse(
   userMessage: string,
   launchAnnouncement?: LaunchAnnouncement | null,
   officialChannelContext?: string | null
@@ -26,23 +26,20 @@ function getEmergencyKnowledgeResponse(
 
   if (isGamingNftQuestion(query)) {
     const confirmedFacts = getConfirmedGamingNftFacts();
-    const projectDetails = confirmedFacts.length
-      ? `Verified Elite Force information:\n${confirmedFacts.join('\n')}`
-      : 'No Elite Force Gaming NFT details are officially confirmed in the current knowledge registry.';
-    return [
-      'Gaming NFTs are blockchain-based digital items that may represent collectibles, in-game items, memberships, access, achievements, or other uses, depending on the project.',
-      projectDetails,
-      'Unconfirmed specifics such as price, supply, launch or mint date, eligibility, claims, rewards, staking, and game use should not be assumed.',
-      `Check official updates at ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} or ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}. Avoid unofficial claim links, and never share a wallet seed phrase or private key. NFTs do not guarantee profit.`,
-    ].join('\n\n');
+    if (/\b(?:link|url|claim|mint)\b/i.test(query) && !confirmedFacts.length) {
+      return `I don't have a verified Gaming NFT claim or mint link. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for official updates, and never share your wallet's seed phrase or private key.`;
+    }
+    if (/\b(?:what is|what are|meaning)\b/i.test(query)) {
+      return 'A gaming NFT is a blockchain-based digital item that might represent a collectible, game item, or access. Its actual use depends on the project; Elite Force has not confirmed specific Gaming NFT features yet.';
+    }
+    if (confirmedFacts.length) {
+      return `The verified Elite Force Gaming NFT details I have are: ${confirmedFacts.join(' ')}`;
+    }
+    return `Elite Force hasn't confirmed Gaming NFT details such as launch, supply, benefits, staking, or in-game use yet. Watch ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for updates.`;
   }
 
   if (query.includes('timer') || query.includes('countdown')) {
     return `The official Elite Force timer is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.timer}`;
-  }
-
-  if (query.includes('website') || query.includes('web site') || query.includes('site link')) {
-    return `The official Elite Force website is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}`;
   }
 
   if (/\b(group|community)\b.{0,30}\b(link|url|invite|join)\b|\b(link|url|invite)\b.{0,30}\b(group|community)\b/i.test(query)) {
@@ -57,6 +54,10 @@ function getEmergencyKnowledgeResponse(
       `X: ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}`,
       `Timer: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.timer}`,
     ].join('\n');
+  }
+
+  if (query.includes('website') || query.includes('web site') || query.includes('site link')) {
+    return `The official Elite Force website is ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}.`;
   }
 
   if (
@@ -77,6 +78,10 @@ function getEmergencyKnowledgeResponse(
     );
   }
 
+  if (/\b(?:launch|listing|airdrop|whitepaper|staking|rewards?|presale)\b/i.test(query)) {
+    return `I don't have a verified announcement for that yet. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for confirmed updates.`;
+  }
+
   if (
     query.includes('contract') ||
     query.includes('address') ||
@@ -84,14 +89,7 @@ function getEmergencyKnowledgeResponse(
     query.includes('bsc') ||
     query.includes('token')
   ) {
-    return (
-      `Here is the official **${ELITE_FORCE_KNOWLEDGE.nativeToken.symbol}** token information:\n\n` +
-      `• **Token Name:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.name}\n` +
-      `• **Symbol:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.symbol}\n` +
-      `• **Standard:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.standard}\n` +
-      `• **Status:** ${ELITE_FORCE_KNOWLEDGE.nativeToken.status}\n\n` +
-      `Contract address and launch details will be revealed exclusively on ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}. Beware of scams! 🧡`
-    );
+    return `E-FORCE is the project's BEP-20 token on BNB Smart Chain and is still in development. Its contract address hasn't been officially released; check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for updates and beware of fake contracts.`;
   }
 
   if (
@@ -108,18 +106,14 @@ function getEmergencyKnowledgeResponse(
   }
 
   if (
+    query.includes('owner') ||
     query.includes('founder') ||
     query.includes('ceo') ||
     query.includes('creator') ||
     query.includes('dev') ||
     query.includes('team')
   ) {
-    return (
-      `**Elite Force Leadership Team:**\n\n` +
-      `• **Founder & CEO:** Prince Sourav (@princesourav80)\n` +
-      `• **Co-Founder:** Krit (@kirit_1)\n\n` +
-      `For official announcements, follow: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}`
-    );
+    return "I can't identify the owner or share private team details. For public project updates, check the official Telegram channel.";
   }
 
   if (query.includes('channel') || query.includes('telegram')) {
@@ -144,15 +138,11 @@ function getEmergencyKnowledgeResponse(
     query.includes('hey') ||
     query.includes('start')
   ) {
-    return `Hey! 👋 How can I assist you with questions about Elite Force (E-FORCE), our Web3 ecosystem, BNB Chain token, or community updates today? 🧡`;
+    return "Hey! What can I help you with?";
   }
 
   return (
-    `**Elite Force** is a decentralized Web3 community and reward ecosystem built on the **BNB Smart Chain** centered around its native utility token **E-FORCE**.\n\n` +
-    `• **Official Tagline:** *Building Beyond Limits*\n` +
-    `• **Official Channel:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}\n` +
-    `• **Official X:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}\n\n` +
-    `Feel free to ask any questions about our token, vision, or community! 🧡🚀`
+    `Elite Force is a Web3 ecosystem built around E-FORCE on BNB Smart Chain. I can help with verified project details; updates are posted at ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}.`
   );
 }
 
@@ -191,7 +181,7 @@ async function callOpenRouter(
       model: modelToUse,
       messages,
       temperature: 0.5,
-      max_tokens: 160,
+      max_tokens: 360,
     }),
     signal: AbortSignal.timeout(15000),
   });
@@ -251,7 +241,7 @@ async function callGemini(
   const genConfig: Record<string, unknown> = {
     systemInstruction,
     temperature: 0.5,
-    maxOutputTokens: 200,
+    maxOutputTokens: 420,
   };
 
   if (isThinkingModel) {

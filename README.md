@@ -178,7 +178,7 @@ The bot's personality, behavior rules, and ecosystem knowledge are fully modular
 ### 1. Changing Personality & Safety Rules
 Edit [`src/ai/systemPrompt.ts`](file:///src/ai/systemPrompt.ts):
 * **`DEFAULT_PROMPT_CONFIG.personality`**: Adjust tone (friendly, formal, technical).
-* **`DEFAULT_PROMPT_CONFIG.maxWordsPerReply`**: Tune answer length.
+* Reply length adapts to the question: brief for simple questions and structured when a complex explanation needs it.
 * **`buildSystemPrompt()`**: Modify language prompts, few-shot examples, or safety boundaries.
 
 ### 2. Updating Ecosystem Knowledge
