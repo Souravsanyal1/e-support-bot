@@ -146,6 +146,7 @@ export function getEmergencyKnowledgeResponse(
   }
 
   if (
+    /^(?:(?:hi|hello|hey)\s+)?celia[.!?\s]*$/i.test(query) ||
     query.includes('who are you') ||
     query.includes('what is your name') ||
     query.includes('who is celia') ||

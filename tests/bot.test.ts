@@ -1423,6 +1423,8 @@ async function runTests() {
 
   const identityResponse = await generateSupportResponse('who are you?');
   assert(identityResponse.includes("I'm Celia, Elite Force's AI support assistant."), 'Explicit identity query must identify Celia honestly as an AI assistant');
+  const calledByNameResponse = getEmergencyKnowledgeResponse('Celia');
+  assert(calledByNameResponse.includes("I'm Celia, Elite Force's AI support assistant."), 'Calling the bot Celia by name should trigger a short identity response');
   assert(greetingResponse.split(/[.!?]/).filter(Boolean).length <= 2, 'Greeting fallback should stay short and conversational');
   const nftUnknownResponse = getEmergencyKnowledgeResponse('How many Elite Force Gaming NFTs will there be?');
   assert(nftUnknownResponse.includes("hasn't confirmed"), 'Unknown Gaming NFT details should be described as unconfirmed');
