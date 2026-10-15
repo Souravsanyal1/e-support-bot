@@ -59,7 +59,7 @@ function enqueueChatReply(chatId: number, task: () => Promise<void>): Promise<vo
   return tracked;
 }
 
-async function replyInChatOrder(ctx: Context, text: string, replyToMessage = true): Promise<void> {
+async function replyInChatOrder(ctx: Context, text: string, replyToMessage = false): Promise<void> {
   await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
     await safeReply(ctx, text, { replyToMessage });
   });
@@ -124,7 +124,7 @@ async function rejectUnsafePrompt(ctx: Context, text: string, alreadyQueued = fa
   });
 
   if (ctx.chat?.type === 'private') {
-    if (alreadyQueued) await safeReply(ctx, result.safeResponse, { replyToMessage: true });
+    if (alreadyQueued) await safeReply(ctx, result.safeResponse);
     else await replyInChatOrder(ctx, result.safeResponse);
   } else {
     try { await ctx.deleteMessage(); } catch { /* bot may not have delete permission */ }
@@ -358,7 +358,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
       if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
       await deleteLoadingSticker(ctx, loadingStickerId);
-      await safeReply(ctx, response, { replyToMessage: true });
+      await safeReply(ctx, response);
     } catch (error) {
       await deleteLoadingSticker(ctx, loadingStickerId);
       logger.error('Error handling /ask command', error);
@@ -465,6 +465,9 @@ export async function handleTextMessage(
     .trim();
 
   const queryToProcess = cleanedText || text;
+  // Reject prompt overrides before admin lookups or retrieval can use unrelated context.
+  if (await rejectUnsafePrompt(ctx, queryToProcess)) return;
+
   const walletSafetyResponse = getWalletSafetyResponse(queryToProcess);
   if (walletSafetyResponse) {
     await replyInChatOrder(ctx, walletSafetyResponse);
@@ -483,9 +486,6 @@ export async function handleTextMessage(
     });
     return;
   }
-
-  // ── Prompt Injection & Security Attack Detection ─────────────────────────
-  if (await rejectUnsafePrompt(ctx, queryToProcess)) return;
 
   // ── Message Logging (non-admin users only) ────────────────────────────────
   if (!isAdmin(ctx.from?.id)) {
@@ -519,12 +519,12 @@ export async function handleTextMessage(
       if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
       await deleteLoadingSticker(ctx, loadingStickerId);
-      await safeReply(ctx, response, { replyToMessage: true });
+      await safeReply(ctx, response);
       if (ctx.chat?.id) recordReply(ctx.chat.id, queryToProcess);
     } catch (error) {
       await deleteLoadingSticker(ctx, loadingStickerId);
       logger.error('Error handling direct text message', error);
-      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.", { replyToMessage: true });
+      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.");
     }
   });
 }
@@ -816,7 +816,7 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
     }
 
     await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, analysisResult.text, { replyToMessage: true });
+    await safeReply(ctx, analysisResult.text);
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);

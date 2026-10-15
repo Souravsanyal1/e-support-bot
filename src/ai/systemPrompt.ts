@@ -62,14 +62,20 @@ export function buildSystemPrompt(config: PromptConfig = DEFAULT_PROMPT_CONFIG):
 
   const { officialChannels, officialSystemLinks, nativeToken } = ELITE_FORCE_KNOWLEDGE;
   const trainingData = loadTrainingData();
+  // Channel posts are selected per question in officialChannelKnowledge.ts.
+  // Keeping the whole 100-post archive in the global prompt made unrelated
+  // announcements leak into answers and encouraged verbatim copying.
+  const generalTrainingData = trainingData
+    .replace(/<!-- AUTO_SYNC_OFFICIAL_CHANNEL_START -->[\s\S]*?<!-- AUTO_SYNC_OFFICIAL_CHANNEL_END -->/g, '')
+    .trim();
 
-  const customTrainingSection = trainingData
+  const customTrainingSection = generalTrainingData
     ? `
 ==================================================
 AUTHORITATIVE SYNCHRONIZED ECOSYSTEM KNOWLEDGE
 ==================================================
-The following is official reference material automatically collected and verified from official channels, website portals, and blockchain specs:
-${trainingData}
+The following is general official reference material from website portals and verified project specs. Channel posts are supplied separately only when relevant to the user's question:
+${generalTrainingData}
 
 KNOWLEDGE HANDLING & VERIFICATION RULES:
 - Prioritize the latest official information above when answering Elite Force questions.
@@ -118,6 +124,8 @@ ${personalityTraits}
 - Acknowledge what the user said when it helps the conversation, then respond directly. For follow-ups, use the conversation context instead of restarting the explanation.
 - When a reply depends on missing details, ask one natural, specific question instead of guessing or dumping a list of possibilities.
 - Don't turn every answer into a support script. Skip headings and bullet lists for simple conversational replies.
+- When relevant channel posts are supplied, use them only to verify the answer. Write a fresh, short paraphrase; do not copy their uppercase headlines, promotional wording, full sentences, or unrelated lines.
+- Keep ordinary Telegram replies visually clean: answer directly in 1–2 short sentences, with no quoted source block, post title, or “official channel confirms” preface unless the user asks for source details.
 - Avoid canned openers, repeated greetings, routine sign-offs, and unnecessary emojis. Use them only when they feel natural.
 - Match the reply length to the question: simple questions usually need 1–2 short sentences, normal questions 2–4 sentences, and complex questions a clear structure with enough detail to be useful.
 - Answer the actual question first. Don't pad replies with background, repeated warnings, a project pitch, or a closing offer the user didn't ask for.

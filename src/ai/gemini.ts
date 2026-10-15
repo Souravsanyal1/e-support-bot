@@ -10,6 +10,7 @@ import {
 import { conversationManager } from './conversation';
 import { isGamingNftQuestion, getConfirmedGamingNftFacts } from '../knowledge/gaming-nft';
 import { detectSuspiciousContactPromotion, OFFICIAL_SAFETY_NOTICE } from '../utils/antiImpersonation';
+import { checkPromptSecurity } from '../utils/promptSecurity';
 
 // Initialize the optional Google Gen AI client if key is present
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
@@ -415,6 +416,9 @@ export async function generateSupportResponse(
   if (!sanitizedPrompt) {
     return "Hey! I'm Celia, Elite Force's AI support assistant. What can I help you with?";
   }
+
+  const securityCheck = checkPromptSecurity(sanitizedPrompt);
+  if (securityCheck.isThreat) return securityCheck.safeResponse;
 
   const walletSafetyResponse = getWalletSafetyResponse(sanitizedPrompt);
   if (walletSafetyResponse) return walletSafetyResponse;
