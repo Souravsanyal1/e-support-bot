@@ -43,6 +43,7 @@ import {
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
+const OWNER_QUERY = /\b(?:who(?:'s|\s+is)?(?:\s+the)?|name\s+of|identify|tell\s+me|show\s+me|reveal|give\s+me)\s+(?:the\s+)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)\s+(?:name|identity|id|username)\b|\bowner\s+id\b/i;
 
 export const VERIFIED_OFFICIAL_ADMINS = [
   '• Elite Force | Support (@EliteForceSupportTeam)',
@@ -63,11 +64,17 @@ export function isAdminListQuery(text: string): boolean {
   return hasAdmin && (hasInquiry || lower === 'admin' || lower === 'admins');
 }
 
+export function isOwnerIdentityQuery(text: string): boolean {
+  return OWNER_QUERY.test(text);
+}
+
+const OWNER_PRIVACY_RESPONSE = "I can share the verified channel admins, but I can't identify or disclose the owner.";
+
 export async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
   try {
     const admins = await ctx.api.getChatAdministrators(OFFICIAL_CHANNEL_ID);
     const humanAdmins = admins
-      .filter((admin) => !admin.user.is_bot)
+      .filter((admin) => !admin.user.is_bot && admin.status !== 'creator')
       .map((admin) => {
         const name = [admin.user.first_name, admin.user.last_name].filter(Boolean).join(' ').trim();
         return admin.user.username ? `${name || 'Admin'} (@${admin.user.username})` : name || 'Admin';
@@ -238,6 +245,11 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  if (isOwnerIdentityQuery(query)) {
+    await safeReply(ctx, OWNER_PRIVACY_RESPONSE);
+    return;
+  }
+
   if (isAdminListQuery(query)) {
     await safeReply(ctx, await getOfficialChannelAdmins(ctx));
     return;
@@ -368,6 +380,11 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     .trim();
 
   const queryToProcess = cleanedText || text;
+
+  if (isOwnerIdentityQuery(queryToProcess)) {
+    await safeReply(ctx, OWNER_PRIVACY_RESPONSE, { replyToMessage: true });
+    return;
+  }
 
   if (isAdminListQuery(queryToProcess)) {
     await safeReply(ctx, await getOfficialChannelAdmins(ctx), { replyToMessage: true });

@@ -20,6 +20,7 @@ export const ELITE_FORCE_KNOWLEDGE = {
 
   officialChannels: {
     telegramChannel: 'https://t.me/Elite_Force_Official',
+    telegramGroup: 'https://t.me/Elite_Force_Official',
     telegramHandle: '@Elite_Force_Official',
     xProfile: 'https://x.com/EliteForceOFC',
     xHandle: '@EliteForceOFC',

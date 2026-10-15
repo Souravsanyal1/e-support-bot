@@ -45,6 +45,20 @@ function getEmergencyKnowledgeResponse(
     return `The official Elite Force website is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}`;
   }
 
+  if (/\b(group|community)\b.{0,30}\b(link|url|invite|join)\b|\b(link|url|invite)\b.{0,30}\b(group|community)\b/i.test(query)) {
+    return `Here's the official Elite Force Telegram community link: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramGroup}`;
+  }
+
+  if (/\b(all|official|social)\b.{0,25}\b(links|urls)\b|\blinks\b/i.test(query)) {
+    return [
+      'Here are the official links:',
+      `Website: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}`,
+      `Telegram community: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramGroup}`,
+      `X: ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}`,
+      `Timer: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.timer}`,
+    ].join('\n');
+  }
+
   if (
     launchAnnouncement &&
     /\b(?:launch|launching|listing|date|when)\b|কবে|লঞ্চ|তারিখ/i.test(query)
@@ -108,18 +122,9 @@ function getEmergencyKnowledgeResponse(
     );
   }
 
-  if (
-    query.includes('channel') ||
-    query.includes('link') ||
-    query.includes('group') ||
-    query.includes('website') ||
-    query.includes('social')
-  ) {
+  if (query.includes('channel') || query.includes('telegram')) {
     return (
-      `Official **Elite Force** Links:\n\n` +
-      `• 📢 **Channel:** ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}\n` +
-      `• 🐦 **X (Twitter):** ${ELITE_FORCE_KNOWLEDGE.officialChannels.xProfile}\n\n` +
-      `Stay connected with our official channels! 🚀`
+      `Here's the official Telegram channel: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}`
     );
   }
 

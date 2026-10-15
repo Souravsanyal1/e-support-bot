@@ -222,6 +222,7 @@ ${corePillars.map((p) => `- ${p}`).join('\n')}
 
 ## 3. Official Channels & Verified System Links
 - **Official Telegram Channel:** ${officialChannels.telegramChannel} (${officialChannels.telegramHandle})
+- **Official Telegram Community:** ${officialChannels.telegramGroup}
 - **Official X (Twitter):** ${officialChannels.xProfile} (${officialChannels.xHandle})
 - **Official Portal:** ${officialSystemLinks.website}
 - **Official System Timer:** ${officialSystemLinks.timer}
