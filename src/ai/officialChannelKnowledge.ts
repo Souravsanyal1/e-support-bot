@@ -246,7 +246,7 @@ function expandSearchTerms(terms: string[]): Set<string> {
 export function selectRelevantOfficialPosts(
   question: string,
   posts: OfficialChannelPost[],
-  maxResults = 3
+  maxResults = 1
 ): OfficialChannelPost[] {
   const questionTerms = Array.from(new Set(normalizeSearchText(question)
     .filter((term) => term.length >= 3 && !SEARCH_STOP_WORDS.has(term))));
@@ -265,7 +265,7 @@ export function selectRelevantOfficialPosts(
   const averageLength = corpus.reduce((sum, doc) => sum + doc.tokens.length, 0) / Math.max(1, corpus.length);
   const normalizedQuestion = question.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
-  return corpus
+  const scored = corpus
     .map((doc) => {
       const frequencies = new Map<string, number>();
       for (const token of doc.tokens) frequencies.set(token, (frequencies.get(token) ?? 0) + 1);
@@ -281,10 +281,16 @@ export function selectRelevantOfficialPosts(
       return { post: doc.post, score: score + phraseBoost };
     })
     .filter((item) => item.score > 0)
-    .sort((a, b) => b.score - a.score || b.post.postedAt - a.post.postedAt)
+  if (!scored.length) return [];
+
+  // Prefer the newest post among the strongly relevant matches, so stale
+  // announcements don't outrank later updates about the same topic.
+  const bestScore = Math.max(...scored.map((item) => item.score));
+  return scored
+    .filter((item) => item.score >= bestScore * 0.4)
+    .sort((a, b) => b.post.postedAt - a.post.postedAt || b.post.messageId - a.post.messageId)
     .slice(0, Math.max(0, maxResults))
-    .map((item) => item.post)
-    .sort((a, b) => a.postedAt - b.postedAt);
+    .map((item) => item.post);
 }
 
 export function getRelevantOfficialChannelContext(question: string): string | null {

@@ -108,8 +108,15 @@ async function runTests() {
   postFixture[98].text = 'Airdrop claim eligibility and distribution details';
   assert.strictEqual(
     officialPosts.selectRelevantOfficialPosts('airdrop reward claim', postFixture)[0]?.messageId,
-    99,
-    'Hybrid retrieval should rank semantically related source posts above unrelated recent posts'
+    101,
+    'Hybrid retrieval should return the latest strongly relevant source post'
+  );
+  postFixture[90].text = 'Gaming NFT benefits and reward eligibility details';
+  postFixture[95].text = 'Gaming NFT holders can access the new arena';
+  assert.strictEqual(
+    officialPosts.selectRelevantOfficialPosts('Gaming NFT benefits', postFixture)[0]?.messageId,
+    96,
+    'When multiple strongly relevant posts match, return the newest one first'
   );
   console.log('✓ Official channel post selection passed');
 
@@ -121,6 +128,12 @@ async function runTests() {
   );
   assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
   assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
+  const nftPostFallback = getOfficialPostFallbackResponse(
+    'Give me Gaming NFT info',
+    null,
+    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@Elite_Force_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Gaming NFT holders can access the new arena after launch."}]'
+  );
+  assert(nftPostFallback.includes('Gaming NFT holders can access the new arena'), 'NFT fallback should answer from a matched official post before sending users to a channel link');
   console.log('✓ Official source context fallback passed');
 
   // Dynamically import modules after environment variables are set

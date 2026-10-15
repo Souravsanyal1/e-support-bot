@@ -29,6 +29,14 @@ export function getEmergencyKnowledgeResponse(
   const officialPostFallback = getOfficialPostFallback(officialChannelContext);
 
   if (isGamingNftQuestion(query)) {
+    // A matched official post is the freshest evidence. Use it before static
+    // unknown-information replies, which otherwise send users to a channel link.
+    if (officialPostFallback) {
+      const securityNote = /\b(?:link|url|claim|mint)\b/i.test(query)
+        ? ' Verify any claim or mint URL against the official channel and never share your seed phrase or private key.'
+        : '';
+      return `${officialPostFallback}${securityNote}`;
+    }
     const confirmedFacts = getConfirmedGamingNftFacts();
     if (/\b(?:link|url|claim|mint)\b/i.test(query) && !confirmedFacts.length) {
       return `I don't have a verified Gaming NFT claim or mint link. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for official updates, and never share your wallet's seed phrase or private key.`;
