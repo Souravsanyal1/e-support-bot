@@ -54,6 +54,10 @@ export function getEmergencyKnowledgeResponse(
     return `The official Elite Force timer is here: ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.timer}`;
   }
 
+  if (/\b(?:official\s+)?(?:admins?|administrators?|moderators?|team)\b.{0,50}\b(?:dm|message|contact)\b.{0,40}\b(?:first|start|initiate)\b|\b(?:scam|fake|impersonat\w*)\b.{0,50}\b(?:admin|administrator|moderator|team)\b/i.test(query)) {
+    return 'Official admins will never start a private chat with you. Treat a first-contact DM claiming to be an admin as fake, and never send money, passwords, seed phrases, or private keys.';
+  }
+
   if (/\b(group|community)\b.{0,30}\b(link|url|invite|join)\b|\b(link|url|invite)\b.{0,30}\b(group|community)\b/i.test(query)) {
     return `Here's the official Elite Force Telegram community link: ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramGroup}`;
   }
@@ -69,7 +73,11 @@ export function getEmergencyKnowledgeResponse(
   }
 
   if (query.includes('website') || query.includes('web site') || query.includes('site link')) {
-    return `The official Elite Force website is ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}.`;
+    return `The official Elite Force website is ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}. You can check it for the project's current information and official resources.`;
+  }
+
+  if (/\bhow\s+(?:does|do)\s+(?:elite\s*force|e[-\s]?force|this\s+project|the\s+ecosystem)\s+work\b|\bhow\s+to\s+(?:work|get\s+started|participate|join)\b|\bhow\s+(?:can|do)\s+i\s+(?:start|participate|join)\b/i.test(query)) {
+    return 'Elite Force is a Web3 ecosystem being developed around the E-FORCE token on BNB Smart Chain, with community participation and blockchain utility as its focus. The specific product steps and token features have not all been officially confirmed yet, so I can’t give a verified usage or earning process. For the current project overview, visit https://elite-force.space.';
   }
 
   if (/\b(?:max(?:imum)?\s+supply|total\s+supply|token\s+supply|total\s+tokens?|how\s+many\s+tokens?|tokenomics)\b/i.test(query)) {
@@ -211,13 +219,13 @@ async function callOpenRouter(
     headers: {
       Authorization: `Bearer ${env.openrouterApiKey}`,
       'HTTP-Referer': 'https://t.me/Elite_Force_Support_Bot',
-      'X-Title': "I'm Celia, your System & Group Management Admin.",
+      'X-Title': 'Elite Force Community Support',
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: modelToUse,
       messages,
-      temperature: 0.5,
+      temperature: 0.65,
       max_tokens: 360,
     }),
     signal: AbortSignal.timeout(15000),

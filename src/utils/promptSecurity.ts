@@ -77,7 +77,7 @@ export interface SecurityCheckResult {
 }
 
 const SAFE_DECLINE =
-  'For security and privacy reasons, I cannot assist with that request. How can I help you with Elite Force today?';
+  "I’ll stick with my role as Elite Force’s AI support assistant. I can help with verified project questions or community support.";
 
 /**
  * Checks a user message for prompt injection or infrastructure extraction attempts.

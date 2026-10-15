@@ -43,7 +43,7 @@ import {
 
 const OFFICIAL_CHANNEL_ID = '@EliteForce_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
-const OWNER_QUERY = /\b(?:who(?:'s|\s+is)?(?:\s+the)?|name\s+of|identify|tell\s+me|show\s+me|reveal|give\s+me)\s+(?:the\s+)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)\s+(?:name|identity|id|username)\b|\bowner\s+id\b/i;
+const OWNER_QUERY = /\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
 
 export const VERIFIED_OFFICIAL_ADMINS = [
   '• Elite Force | Support (@EliteForceSupportTeam)',
@@ -68,20 +68,20 @@ export function isOwnerIdentityQuery(text: string): boolean {
   return OWNER_QUERY.test(text);
 }
 
-const OWNER_PRIVACY_RESPONSE = "I can share the verified channel admins, but I can't identify or disclose the owner.";
+const OWNER_PRIVACY_RESPONSE = "I can't share numeric Telegram IDs, including the owner's. I can provide publicly listed admin names and usernames.";
 
 export async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
   try {
     const admins = await ctx.api.getChatAdministrators(OFFICIAL_CHANNEL_ID);
     const humanAdmins = admins
-      .filter((admin) => !admin.user.is_bot && admin.status !== 'creator')
+      .filter((admin) => !admin.user.is_bot)
       .map((admin) => {
         const name = [admin.user.first_name, admin.user.last_name].filter(Boolean).join(' ').trim();
         return admin.user.username ? `${name || 'Admin'} (@${admin.user.username})` : name || 'Admin';
       });
     const uniqueAdmins = [...new Set(humanAdmins)];
 
-    // Strictly enforce: never display Owner ID or numeric user IDs.
+    // Public Telegram display names/usernames are okay; never include numeric IDs.
     if (uniqueAdmins.length > 0) {
       return [
         'Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):',
@@ -791,7 +791,7 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
       `📢 *Announcement Channel:* https://t.me/EliteForce_Official`,
       `🐦 *Official X:* https://x.com/EliteForceOFC`,
       '',
-      `🛡️ *Safety Reminder:* Official admins will *never* DM you first or ask for private keys/seed phrases.`,
+      `🛡️ *Safety Reminder:* Official admins will never start a private chat with you. Treat first-contact DMs claiming to be admins as fake, and never share private keys or seed phrases.`,
     ].join('\n');
 
     await safeReply(ctx, welcome);

@@ -29,6 +29,9 @@ async function runTests() {
     }
     const { containsTopicKeyword } = await import('../src/utils/messageTrigger');
     assert(containsTopicKeyword('Is play to earn available?'), 'Topic trigger should detect play to earn terminology');
+    for (const query of ['official website link', 'How does the ecosystem work?', 'timer countdown', 'official telegram group', 'fake link scam', 'who are the admins?']) {
+      assert(containsTopicKeyword(query), `Topic trigger should detect support intent keywords: ${query}`);
+    }
     assert.strictEqual(gamingNft.classifyGamingNftIntent('What is Elite Force Gaming NFT?'), 'definition');
     assert.strictEqual(gamingNft.classifyGamingNftIntent('When will Gaming NFT launch?'), 'launch');
     assert.strictEqual(gamingNft.classifyGamingNftIntent('How can I claim a Gaming NFT?'), 'claim');
@@ -126,7 +129,18 @@ async function runTests() {
   assert(alwaysCheckedContext?.includes('Latest airdrop announcement'), 'Latest official update should be supplied as optional context');
   console.log('✓ Official channel post selection passed');
 
-  const { getEmergencyKnowledgeResponse: getOfficialPostFallbackResponse } = await import('../src/ai/gemini');
+  const { getEmergencyKnowledgeResponse } = await import('../src/ai/gemini');
+  const getOfficialPostFallbackResponse = getEmergencyKnowledgeResponse;
+  const howItWorks = getEmergencyKnowledgeResponse('How does Elite Force work?');
+  assert(howItWorks.includes('Web3 ecosystem') && howItWorks.includes('E-FORCE'), 'How-it-works questions should get a direct project explanation');
+  assert(howItWorks.includes('not all been officially confirmed'), 'Unknown workflows must be identified instead of invented');
+  assert(howItWorks.includes('https://elite-force.space'), 'A practical next step may include the official website');
+  const websiteLinkAnswer = getEmergencyKnowledgeResponse('What is the official website link?');
+  assert(websiteLinkAnswer.includes('https://elite-force.space'), 'Website link questions should return the verified site');
+  assert(!websiteLinkAnswer.includes('Telegram'), 'Website link answers should not dump unrelated links');
+  const adminFirstContact = getEmergencyKnowledgeResponse('Do official admins message users first?');
+  assert(adminFirstContact.includes('never start a private chat'), 'Admin first-contact questions should get the anti-impersonation rule');
+  assert(adminFirstContact.includes('seed phrases'), 'Admin impersonation guidance should preserve wallet safety');
   const readableFallback = getOfficialPostFallbackResponse(
     'When can I claim?',
     null,
@@ -1235,6 +1249,7 @@ async function runTests() {
   console.log('Testing Verified Official Channel Administrators & Privacy Guardrails...');
   const {
     isAdminListQuery,
+    isOwnerIdentityQuery,
     getOfficialChannelAdmins,
     VERIFIED_OFFICIAL_ADMINS_TEXT,
     VERIFIED_OFFICIAL_ADMINS,
@@ -1244,6 +1259,8 @@ async function runTests() {
   assert.strictEqual(isAdminListQuery('channel administrators'), true, 'Should detect channel admin query');
   assert.strictEqual(isAdminListQuery('admin'), true, 'Should detect standalone admin query');
   assert.strictEqual(isAdminListQuery('what is elite force'), false, 'Should not match unrelated queries');
+  assert.strictEqual(isOwnerIdentityQuery('What is the owner ID?'), true, 'Owner ID requests must be blocked');
+  assert.strictEqual(isOwnerIdentityQuery('Who are the official admins?'), false, 'Public admin-list requests must remain answerable');
 
   const mockChannelAdminCtx = {
     api: {
@@ -1259,6 +1276,19 @@ async function runTests() {
   assert(adminResponse.includes('excludes bots'), 'Must mention excluding bots');
   assert(!adminResponse.includes('Owner ID:'), 'Strict rule: Must NOT expose Owner ID');
   assert(!adminResponse.includes('123456789'), 'Strict rule: Must NOT expose numeric Telegram ID');
+  const publicAdminCtx = {
+    api: {
+      getChatAdministrators: async () => [
+        { status: 'creator', user: { id: 7654321, is_bot: false, first_name: 'Public Owner', username: 'public_owner' } },
+        { status: 'administrator', user: { id: 7654322, is_bot: false, first_name: 'Support', username: 'EliteForceSupportTeam' } },
+        { status: 'administrator', user: { id: 7654323, is_bot: true, first_name: 'Bot', username: 'helper_bot' } },
+      ],
+    },
+  } as unknown as Context;
+  const publicAdminResponse = await getOfficialChannelAdmins(publicAdminCtx);
+  assert(publicAdminResponse.includes('Public Owner (@public_owner)'), 'Public creator name and username may appear in the public admin list');
+  assert(!publicAdminResponse.includes('7654321') && !publicAdminResponse.includes('7654322'), 'Numeric IDs must never be included in admin output');
+  assert(!publicAdminResponse.includes('helper_bot'), 'Bots must not be included in the human admin list');
   console.log('✓ Verified official channel administrators & privacy guardrails passed');
 
   // Test 19: Non-Repetitive Introduction Guardrail
@@ -1269,11 +1299,15 @@ async function runTests() {
   assert(currentPrompt.includes('DO NOT start regular replies with "I\'m Celia, your System & Group Management Admin."'), 'Must ban generic intro in regular replies');
   assert(currentPrompt.includes('simple questions usually need 1–2 short sentences'), 'Reply length should adapt to question complexity');
   assert(currentPrompt.includes('Use contractions and everyday wording'), 'Prompt should encourage natural conversational English');
+  assert(currentPrompt.includes("Never imitate another bot's persona"), "Prompt must keep the bot's own identity and avoid copying unrelated bot details");
+  assert(currentPrompt.includes('Avoid repeating the same identity statement'), 'Prompt must handle follow-ups without repeating full replies');
   assert(currentPrompt.includes('configured moderation policy'), 'Prompt should defer profanity handling to configured moderation');
+  assert(currentPrompt.includes('will never initiate a private message'), 'Prompt must warn that official admins never initiate private contact');
+  assert(currentPrompt.includes('especially the owner ID'), 'Prompt must keep owner numeric ID strictly private');
   assert(currentPrompt.includes('general group conversations are not collected as answer context'), 'Prompt should not use general group conversation as answer context');
   assert(!currentPrompt.includes('Messages with bad words are automatically removed/deleted'), 'Prompt must not contradict configurable profanity moderation');
 
-  const { generateSupportResponse, getEmergencyKnowledgeResponse } = await import('../src/ai/gemini');
+  const { generateSupportResponse } = await import('../src/ai/gemini');
   // Test emergency static response for casual greeting vs identity query
   const greetingResponse = await generateSupportResponse('hello');
   assert(!greetingResponse.startsWith("I'm Celia, your System & Group Management Admin."), 'Greetings must NOT start with repetitive Celia intro');

@@ -17,7 +17,7 @@
 // ---------------------------------------------------------------------------
 
 const TOPIC_KEYWORDS: string[] = [
-  'elite force', 'eliteforce', 'elite-force',
+  'elite force', 'eliteforce', 'elite-force', 'ecosystem', 'project', 'community',
   'e-force', 'eforce', 'e force',
   'nft', 'nfts',
   'gaming nft', 'game nft', 'nft gaming', 'play-to-earn', 'play to earn',
@@ -43,6 +43,12 @@ const TOPIC_KEYWORDS: string[] = [
   'presale', 'pre-sale', 'pre sale',
   'whitelist', 'white list',
   'mint', 'minting',
+  'eligibility', 'ownership', 'marketplace', 'benefits',
+  'maximum supply', 'total supply', 'token supply', 'contract address',
+  'website', 'web site', 'site link', 'official link', 'url', 'link',
+  'timer', 'countdown', 'telegram', 'channel', 'group', 'twitter', 'x account',
+  'help', 'error', 'problem', 'issue', 'not working', 'scam', 'fake link',
+  'admin', 'admins', 'administrator', 'moderator',
   'burn', 'burning',
   'liquidity',
   'swap',
