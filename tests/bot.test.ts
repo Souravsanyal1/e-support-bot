@@ -104,7 +104,24 @@ async function runTests() {
     101,
     'Relevant current official posts should be selected from the latest 100'
   );
+  postFixture[99].text = 'We are updating the community website today';
+  postFixture[98].text = 'Airdrop claim eligibility and distribution details';
+  assert.strictEqual(
+    officialPosts.selectRelevantOfficialPosts('airdrop reward claim', postFixture)[0]?.messageId,
+    99,
+    'Hybrid retrieval should rank semantically related source posts above unrelated recent posts'
+  );
   console.log('✓ Official channel post selection passed');
+
+  const { getEmergencyKnowledgeResponse: getOfficialPostFallbackResponse } = await import('../src/ai/gemini');
+  const readableFallback = getOfficialPostFallbackResponse(
+    'When can I claim?',
+    null,
+    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@Elite_Force_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Claim opens after the official snapshot."}]'
+  );
+  assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
+  assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
+  console.log('✓ Official source context fallback passed');
 
   // Dynamically import modules after environment variables are set
   const { sanitizeInputString } = await import('../src/middleware/sanitizer');

@@ -24,6 +24,10 @@ export function getEmergencyKnowledgeResponse(
 ): string {
   const query = userMessage.toLowerCase().trim();
 
+  // If both AI providers are unavailable, still use retrieved channel evidence
+  // as readable source text instead of exposing the internal JSON wrapper.
+  const officialPostFallback = getOfficialPostFallback(officialChannelContext);
+
   if (isGamingNftQuestion(query)) {
     const confirmedFacts = getConfirmedGamingNftFacts();
     if (/\b(?:link|url|claim|mint)\b/i.test(query) && !confirmedFacts.length) {
@@ -71,11 +75,10 @@ export function getEmergencyKnowledgeResponse(
     );
   }
 
+  if (officialPostFallback) return officialPostFallback;
+
   if (officialChannelContext) {
-    return (
-      `I found these relevant updates in the official Telegram channel. ` +
-      `Please treat the post wording as the verified source:\n\n${officialChannelContext}`
-    );
+    return `I found an official channel update, but it doesn't confirm the detail you're asking about. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for the latest information.`;
   }
 
   if (/\b(?:launch|listing|airdrop|whitepaper|staking|rewards?|presale)\b/i.test(query)) {
@@ -144,6 +147,28 @@ export function getEmergencyKnowledgeResponse(
   return (
     `Elite Force is a Web3 ecosystem built around E-FORCE on BNB Smart Chain. I can help with verified project details; updates are posted at ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel}.`
   );
+}
+
+function getOfficialPostFallback(context?: string | null): string | null {
+  if (!context) return null;
+  const jsonStart = context.indexOf('[{');
+  if (jsonStart < 0) return null;
+  try {
+    const entries: unknown = JSON.parse(context.slice(jsonStart));
+    if (!Array.isArray(entries)) return null;
+    const posts = entries
+      .filter((entry): entry is { postedAt?: string; text: string } =>
+        Boolean(entry) && typeof entry === 'object' && typeof (entry as { text?: unknown }).text === 'string'
+      )
+      .map((entry) => entry.text.trim())
+      .filter(Boolean);
+    if (!posts.length) return null;
+    return posts.length === 1
+      ? `The official channel post says: “${posts[0]}”`
+      : `The relevant official channel posts say:\n${posts.map((post) => `• ${post}`).join('\n')}`;
+  } catch {
+    return null;
+  }
 }
 
 /**
