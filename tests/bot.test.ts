@@ -46,6 +46,10 @@ async function runTests() {
     }
     const { containsTopicKeyword } = await import('../src/utils/messageTrigger');
     assert(containsTopicKeyword('Is play to earn available?'), 'Topic trigger should detect play to earn terminology');
+    assert(containsTopicKeyword('official updates'), 'Official updates phrasing should trigger a response');
+    for (const query of ['What is Web3?', 'Explain Web4', 'What does Web5 mean?']) {
+      assert(containsTopicKeyword(query), `General Web3/Web4/Web5 questions should trigger: ${query}`);
+    }
     for (const query of ['official website link', 'How does the ecosystem work?', 'timer countdown', 'official telegram group', 'fake link scam', 'who are the admins?']) {
       assert(containsTopicKeyword(query), `Topic trigger should detect support intent keywords: ${query}`);
     }
@@ -165,6 +169,11 @@ async function runTests() {
   const latestPosts = officialPosts.selectLatestOfficialPosts(postFixture);
   assert.strictEqual(latestPosts.length, 100, 'Should select at most the latest 100 available posts');
   assert.strictEqual(latestPosts[0].messageId, 2, 'Posts older than the latest 100 must be excluded');
+  assert.deepStrictEqual(
+    officialPosts.selectRelevantOfficialPosts('official updates', postFixture, 3).map((post: { messageId: number }) => post.messageId),
+    [101, 100, 99],
+    'A general official updates request should receive the newest available channel posts first'
+  );
   assert.deepStrictEqual(
     officialPosts.selectRelevantOfficialPosts('airdrop announcement', postFixture),
     [],
@@ -1418,6 +1427,7 @@ async function runTests() {
   assert(currentPrompt.includes('DO NOT REPEAT YOUR INTRODUCTION'), 'Prompt must instruct against repeating introduction');
   assert(currentPrompt.includes('DO NOT start regular replies with "I\'m Celia, your System & Group Management Admin."'), 'Must ban generic intro in regular replies');
   assert(currentPrompt.includes('simple questions usually need 1–2 short sentences'), 'Reply length should adapt to question complexity');
+  assert(currentPrompt.includes('Answer general educational questions about Web3, Web4, Web5'), 'The bot should handle general Web generation questions');
   assert(currentPrompt.includes('compose a fresh, natural answer in your own words'), 'Channel-backed answers should be paraphrased naturally, not copied');
   assert(currentPrompt.includes('Paraphrase the relevant facts instead of copying'), 'The prompt must explicitly require original wording for channel facts');
   assert(currentPrompt.includes('Use contractions and everyday wording'), 'Prompt should encourage natural conversational English');

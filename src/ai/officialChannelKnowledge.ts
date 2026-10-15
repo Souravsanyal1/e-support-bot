@@ -402,6 +402,16 @@ export function selectRelevantOfficialPosts(
 ): OfficialChannelPost[] {
   const questionTerms = Array.from(new Set(normalizeSearchText(question)
     .filter((term) => term.length >= 3 && !SEARCH_STOP_WORDS.has(term))));
+  const isGeneralUpdatesRequest = /\b(?:official|latest|recent|project|community)?\s*(?:updates?|announcements?)\b/i.test(question);
+  const updateRequestTerms = questionTerms.filter((term) =>
+    !['official', 'latest', 'recent', 'project', 'community', 'update', 'updates', 'announcement', 'announcements'].includes(term)
+  );
+  if (isGeneralUpdatesRequest && updateRequestTerms.length === 0) {
+    return selectLatestOfficialPosts(posts, RECENT_POST_WINDOW)
+      .filter((post) => post.text.trim())
+      .reverse()
+      .slice(0, Math.max(0, maxResults));
+  }
   const terms = Array.from(expandSearchTerms(questionTerms));
   if (questionTerms.some((term) => ['country', 'origin', 'location', 'based', 'built', 'build', 'made', 'from', 'desh', 'kothay', 'theke'].includes(term))) {
     // Country-of-origin questions are often phrased differently from the post;
