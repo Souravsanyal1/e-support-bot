@@ -252,10 +252,8 @@ export async function analyzeImageWithAI(options: AnalyzeImageOptions): Promise<
     ? `${cleanPrompt}\n\n[Additional Verified Community Context:\n${contextInfo}]`
     : cleanPrompt;
 
-  // Schedule based: 0-11 hrs Gemini, 12-23 hrs OpenRouter (with mutual auto-fallback)
-  const hour = new Date().getHours();
-  const scheduledPrimary = hour < 12 ? 'gemini' : 'openrouter';
-  const primary = (scheduledPrimary === 'openrouter' && !env.openrouterApiKey) ? 'gemini' : scheduledPrimary;
+  // Respect the configured provider consistently for text and image replies.
+  const primary = env.aiProvider;
   const secondary = primary === 'gemini' ? 'openrouter' : 'gemini';
 
   logger.info('Analyzing image using multimodal AI (pre-moderated as safe)', {

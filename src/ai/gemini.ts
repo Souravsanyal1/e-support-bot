@@ -285,7 +285,7 @@ async function callGemini(
 
   const genConfig: Record<string, unknown> = {
     systemInstruction,
-    temperature: 0.5,
+      temperature: 0.65,
     maxOutputTokens: 420,
   };
 
@@ -318,25 +318,15 @@ async function callGemini(
 }
 
 /**
- * Returns which AI provider should be the PRIMARY based on current server hour.
- *
- * Schedule (UTC+6 Bangladesh Time):
- *   12:00 AM → 11:59 AM  →  Google Gemini  (hours 0–11)
- *   12:00 PM → 11:59 PM  →  OpenRouter     (hours 12–23)
- *
- * If the primary fails, the other provider is tried automatically as fallback.
+ * Returns the configured primary provider. The other provider is used only
+ * as a fallback, so response behavior does not change with the time of day.
  */
-function getPrimaryProvider(): 'gemini' | 'openrouter' {
-  const hour = new Date().getHours();
-  return hour < 12 ? 'gemini' : 'openrouter';
+export function getPrimaryProvider(): 'gemini' | 'openrouter' {
+  return env.aiProvider;
 }
 
 /**
- * Generates an AI community support response using a time-based provider schedule.
- *
- * Primary schedule:
- *   00:00 – 11:59  →  Google Gemini
- *   12:00 – 23:59  →  OpenRouter (GPT-4o-mini)
+ * Generates an AI community support response using the configured primary provider.
  *
  * If primary provider fails, secondary provider is tried automatically.
  * If all AI APIs are unavailable, emergency knowledge fallback guarantees a helpful answer.
@@ -371,8 +361,7 @@ export async function generateSupportResponse(
   const primary = getPrimaryProvider();
   const secondary = primary === 'gemini' ? 'openrouter' : 'gemini';
 
-  logger.info('AI provider selected by schedule', {
-    hour: new Date().getHours(),
+  logger.info('AI provider selected from configuration', {
     primary,
     secondary,
   });
@@ -388,7 +377,7 @@ export async function generateSupportResponse(
   }
 
   try {
-    // Try the scheduled primary provider first
+    // Try the configured primary provider first
     try {
       replyText = await tryProvider(primary);
       logger.info('Primary AI provider responded successfully', { provider: primary });
