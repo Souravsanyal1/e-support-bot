@@ -38,6 +38,10 @@ export const PUBLIC_COMMANDS: readonly BotCommand[] = [
     command: 'ask',
     description: 'Ask a specific question (e.g., /ask What is Elite Force?)',
   },
+  {
+    command: 'point',
+    description: 'View your earned points & quiz rank',
+  },
 ] as const;
 
 /**
@@ -74,6 +78,7 @@ export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
   { command: 'logs', description: 'Get full message log as txt file' },
   { command: 'clearlogs', description: 'Clear the message log file' },
   { command: 'language', description: 'Switch language mode (all | english | status)' },
+  { command: 'quiz', description: 'Create and manage quizzes for community' },
 ] as const;
 
 /**

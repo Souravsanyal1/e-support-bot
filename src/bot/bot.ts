@@ -34,6 +34,11 @@ import {
 } from '../handlers/adminHandler';
 import { groupImageModerationMiddleware } from '../middleware/groupImageModeration';
 import { isImageDocument } from '../utils/imageDetector';
+import {
+  handleQuizCommand,
+  handlePointCommand,
+  handleQuizCallback,
+} from '../handlers/quizHandler';
 
 /**
  * Initializes and configures the GrammY Telegram Bot instance.
@@ -82,6 +87,11 @@ export function createBot(): Bot {
   bot.command('help', handleHelpCommand);
   bot.command('about', handleAboutCommand);
   bot.command('ask', handleAskCommand);
+  bot.command(['point', 'points'], handlePointCommand);
+  bot.command('quiz', handleQuizCommand);
+
+  // Interactive Quiz Option Callbacks
+  bot.callbackQuery(/^quiz_ans:/, handleQuizCallback);
 
   // 4. Admin-Only Commands (Protected by requireAdmin middleware)
   bot.command('status', requireAdmin, handleAdminStatus);

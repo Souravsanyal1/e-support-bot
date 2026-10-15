@@ -1345,7 +1345,164 @@ async function runTests() {
   const promptEnglish = buildSystemPrompt();
   assert(promptEnglish.includes('STRICT ENGLISH ONLY'), 'Prompt must indicate strict English only');
 
-  console.log('✓ Admin language mode switching & filter bypass passed');
+  // Test 29: Admin /quiz Creation, +1 Point System, /point Command & Callback Query
+  console.log('Testing Admin /quiz Creation, +1 Point System & /point Command...');
+  const { QuizManager } = await import('../src/services/quizManager');
+  const { handleQuizCommand, handlePointCommand, handleQuizCallback } = await import('../src/handlers/quizHandler');
+
+  const testQuizDbPath = path.resolve(process.cwd(), 'data', 'test_quiz_data.json');
+  if (fs.existsSync(testQuizDbPath)) {
+    fs.unlinkSync(testQuizDbPath);
+  }
+
+  const testQuizMgr = QuizManager.resetInstanceForTesting(testQuizDbPath);
+
+  // 1. Initial state: no active quiz
+  assert.strictEqual(testQuizMgr.getActiveQuiz(), null);
+
+  // 2. User checks points when they have 0 points
+  let pointReplyText = '';
+  const mockUserPointCtx = {
+    from: { id: 999888, username: 'testuser', first_name: 'Test' },
+    reply: async (msg: string) => {
+      pointReplyText = msg;
+      return { message_id: 2001 };
+    },
+  } as unknown as Context;
+
+  await handlePointCommand(mockUserPointCtx);
+  assert(pointReplyText.includes('0') && pointReplyText.includes('Point'), 'Should show 0 Points initially');
+  assert(pointReplyText.includes('@testuser'), 'Should display username');
+
+  // 3. Non-admin calls /quiz when no quiz is active
+  let userQuizText = '';
+  const mockUserQuizCtx = {
+    from: { id: 999888 },
+    message: { text: '/quiz' },
+    reply: async (msg: string) => {
+      userQuizText = msg;
+      return { message_id: 2002 };
+    },
+  } as unknown as Context;
+
+  await handleQuizCommand(mockUserQuizCtx);
+  assert(userQuizText.includes('No active quiz'), 'Must inform user that no active quiz exists');
+
+  // 4. Admin creates a quiz via /quiz <Question> | <Opt1> | <Opt2> | <Opt3> | <CorrectOptNumber>
+  let adminQuizReplyText = '';
+  let adminQuizMarkup: any = null;
+  const mockAdminQuizCtx = {
+    from: { id: 6427121076 }, // Configured admin ID
+    message: {
+      text: '/quiz What is the native utility token of Elite Force? | E-FORCE | BNB | SOL | 1',
+    },
+    reply: async (msg: string, opts?: any) => {
+      adminQuizReplyText = msg;
+      adminQuizMarkup = opts?.reply_markup;
+      return { message_id: 2003 };
+    },
+  } as unknown as Context;
+
+  await handleQuizCommand(mockAdminQuizCtx);
+  assert(adminQuizReplyText.includes('New Quiz Created & Activated'), 'Must confirm quiz creation');
+  assert(adminQuizReplyText.includes('E-FORCE'), 'Must include options in question');
+  assert(adminQuizMarkup !== null, 'Must include interactive inline keyboard buttons');
+
+  const activeQuiz = testQuizMgr.getActiveQuiz();
+  assert(activeQuiz !== null, 'Active quiz must be present');
+  assert.strictEqual(activeQuiz!.question, 'What is the native utility token of Elite Force?');
+  assert.strictEqual(activeQuiz!.options.length, 3);
+  assert.strictEqual(activeQuiz!.correctOptionId, 1);
+
+  // 5. User answers correctly (Option 1 = E-FORCE)
+  let cbAlertText = '';
+  let cbReplyText = '';
+  const mockCorrectCallbackCtx = {
+    from: { id: 999888, username: 'testuser', first_name: 'Test' },
+    callbackQuery: { data: `quiz_ans:${activeQuiz!.id}:1` },
+    answerCallbackQuery: async (opts: any) => {
+      cbAlertText = opts?.text;
+      return true;
+    },
+    reply: async (msg: string) => {
+      cbReplyText = msg;
+      return { message_id: 2004 };
+    },
+  } as unknown as Context;
+
+  await handleQuizCallback(mockCorrectCallbackCtx);
+  assert(cbAlertText.includes('+1 point'), 'Must alert user of earned +1 point');
+  assert(cbReplyText.includes('+1 Point'), 'Reply message must celebrate +1 Point');
+
+  // Verify point incremented in quiz manager
+  const userStats = testQuizMgr.getUserPoints(999888);
+  assert.strictEqual(userStats.points, 1, 'User points must be 1');
+  assert.strictEqual(userStats.quizzesAnswered, 1, 'User answered quizzes must be 1');
+
+  // 6. User attempts to answer the SAME quiz again (should be blocked)
+  let duplicateAlert = '';
+  const mockDuplicateCallbackCtx = {
+    from: { id: 999888, username: 'testuser', first_name: 'Test' },
+    callbackQuery: { data: `quiz_ans:${activeQuiz!.id}:1` },
+    answerCallbackQuery: async (opts: any) => {
+      duplicateAlert = opts?.text;
+      return true;
+    },
+    reply: async () => ({ message_id: 2005 }),
+  } as unknown as Context;
+
+  await handleQuizCallback(mockDuplicateCallbackCtx);
+  assert(duplicateAlert.includes('already answered'), 'Must prevent duplicate points on same quiz');
+  assert.strictEqual(testQuizMgr.getUserPoints(999888).points, 1, 'Points must remain 1');
+
+  // 7. Another user answers incorrectly (Option 2 = BNB)
+  let wrongAlert = '';
+  let wrongReply = '';
+  const mockWrongCallbackCtx = {
+    from: { id: 555444, username: 'wronguser', first_name: 'Wrong' },
+    callbackQuery: { data: `quiz_ans:${activeQuiz!.id}:2` },
+    answerCallbackQuery: async (opts: any) => {
+      wrongAlert = opts?.text;
+      return true;
+    },
+    reply: async (msg: string) => {
+      wrongReply = msg;
+      return { message_id: 2006 };
+    },
+  } as unknown as Context;
+
+  await handleQuizCallback(mockWrongCallbackCtx);
+  assert(wrongAlert.includes('Incorrect answer'), 'Must notify user of incorrect answer');
+  assert(wrongReply.includes('Incorrect Answer'), 'Must reply with incorrect notice');
+  assert.strictEqual(testQuizMgr.getUserPoints(555444).points, 0, 'Incorrect answer must award 0 points');
+
+  // 8. User checks /point again -> shows 1 point, rank #1
+  await handlePointCommand(mockUserPointCtx);
+  assert(pointReplyText.includes('1') && pointReplyText.includes('Point'), 'Must display updated 1 Point');
+  assert(pointReplyText.includes('Top Leaderboard'), 'Must display leaderboard');
+
+  // 9. Admin closes the quiz
+  let closeReply = '';
+  const mockAdminCloseCtx = {
+    from: { id: 6427121076 },
+    message: { text: '/quiz close' },
+    reply: async (msg: string) => {
+      closeReply = msg;
+      return { message_id: 2007 };
+    },
+  } as unknown as Context;
+
+  await handleQuizCommand(mockAdminCloseCtx);
+  assert(closeReply.includes('closed successfully'), 'Must confirm quiz closed');
+  assert.strictEqual(testQuizMgr.getActiveQuiz(), null, 'Active quiz must be null after closing');
+
+  // Clean up test file
+  if (fs.existsSync(testQuizDbPath)) {
+    fs.unlinkSync(testQuizDbPath);
+  }
+  QuizManager.resetInstanceForTesting();
+
+  console.log('✓ Admin /quiz creation, +1 point system & /point command passed');
 
   // Cleanup timers
   rateLimiter.destroy();
