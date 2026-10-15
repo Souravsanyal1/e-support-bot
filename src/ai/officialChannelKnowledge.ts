@@ -359,7 +359,7 @@ const SEARCH_STOP_WORDS = new Set([
   'of', 'on', 'or', 'please', 'the', 'to', 'what', 'when', 'where', 'which', 'who',
   'why', 'will', 'with', 'you', 'your', 'ki', 'kobe', 'kokhon', 'kiy', 'eta', 'eita',
   'hobe', 'ache', 'ase', 'bolo', 'bolun', 'theke', 'somoy', 'date', 'kon',
-  'in', 'this', 'does', 'was', 'were',
+  'in', 'this', 'does', 'was', 'were', 'elite', 'force', 'eforce',
 ]);
 
 const SEARCH_CONCEPTS: string[][] = [

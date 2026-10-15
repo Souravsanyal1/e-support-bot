@@ -46,6 +46,30 @@ const OFFICIAL_CHANNEL_ID = '@EliteForce_Official';
 const OFFICIAL_COMMUNITY_GROUP_ID = '@EliteForceCommunity';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 const OWNER_QUERY = /\b(?:who(?:\s+is)?\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?|name\s+of\s+(?:the\s+)?|(?:the\s+)?)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
+const chatReplyQueues = new Map<string, Promise<void>>();
+
+function enqueueChatReply(chatId: number, task: () => Promise<void>): Promise<void> {
+  const key = String(chatId);
+  const previous = chatReplyQueues.get(key) ?? Promise.resolve();
+  const current = previous.catch(() => undefined).then(task);
+  const tracked = current.finally(() => {
+    if (chatReplyQueues.get(key) === tracked) chatReplyQueues.delete(key);
+  });
+  chatReplyQueues.set(key, tracked);
+  return tracked;
+}
+
+async function syncChannelHistoryWithoutHoldingReply(): Promise<void> {
+  let timeout: NodeJS.Timeout | undefined;
+  const deadline = new Promise<void>((resolve) => {
+    timeout = setTimeout(() => resolve(), 1200);
+  });
+  try {
+    await Promise.race([ensureOfficialChannelHistorySynced().then(() => undefined), deadline]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
 
 export const VERIFIED_OFFICIAL_ADMINS = [
   '• Elite Force | Support (@EliteForceSupportTeam)',
@@ -274,37 +298,32 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     return;
   }
 
-  await ensureOfficialChannelHistorySynced();
+  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+    await sendTypingAction(ctx);
+    const startTime = Date.now();
+    const loadingStickerId = await sendLoadingSticker(ctx);
 
-  await sendTypingAction(ctx);
-  const startTime = Date.now();
-  const loadingStickerId = await sendLoadingSticker(ctx);
+    try {
+      await syncChannelHistoryWithoutHoldingReply();
+      const response = await generateSupportResponse(
+        query,
+        getLaunchAnnouncementForQuestion(query),
+        getRelevantOfficialChannelContext(query),
+        ctx.chat?.type === 'private' ? ctx.from?.id : undefined
+      );
 
-  try {
-    const response = await generateSupportResponse(
-      query,
-      getLaunchAnnouncementForQuestion(query),
-      getRelevantOfficialChannelContext(query),
-      ctx.chat?.type === 'private' ? ctx.from?.id : undefined
-    );
+      const elapsed = Date.now() - startTime;
+      const minDisplayMs = 3000;
+      if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
-    // Ensure the animated sticker is visible for at least 3000ms before deletion
-    const elapsed = Date.now() - startTime;
-    const minDisplayMs = 3000;
-    if (elapsed < minDisplayMs) {
-      await sleep(minDisplayMs - elapsed);
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      await safeReply(ctx, response, { replyToMessage: true });
+    } catch (error) {
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      logger.error('Error handling /ask command', error);
+      await safeReply(ctx, "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.");
     }
-
-    await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, response, { replyToMessage: true });
-  } catch (error) {
-    await deleteLoadingSticker(ctx, loadingStickerId);
-    logger.error('Error handling /ask command', error);
-    await safeReply(
-      ctx,
-      "I'm temporarily experiencing an issue generating an answer. Please try again in a moment."
-    );
-  }
+  });
 }
 
 /**
@@ -442,45 +461,34 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     });
   }
 
-  await ensureOfficialChannelHistorySynced();
+  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+    await sendTypingAction(ctx);
+    const startTime = Date.now();
+    const loadingStickerId = await sendLoadingSticker(ctx);
 
-  await sendTypingAction(ctx);
-  const startTime = Date.now();
-  const loadingStickerId = await sendLoadingSticker(ctx);
+    try {
+      await syncChannelHistoryWithoutHoldingReply();
+      const response = await generateSupportResponse(
+        queryToProcess,
+        getLaunchAnnouncementForQuestion(queryToProcess),
+        getRelevantOfficialChannelContext(queryToProcess),
+        ctx.chat?.type === 'private' ? ctx.from?.id : undefined,
+        isReplyToBot ? ctx.message?.reply_to_message?.text : undefined
+      );
 
-  try {
-    const response = await generateSupportResponse(
-      queryToProcess,
-      getLaunchAnnouncementForQuestion(queryToProcess),
-      getRelevantOfficialChannelContext(queryToProcess),
-      ctx.chat?.type === 'private' ? ctx.from?.id : undefined,
-      isReplyToBot ? ctx.message?.reply_to_message?.text : undefined
-    );
+      const elapsed = Date.now() - startTime;
+      const minDisplayMs = 3000;
+      if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
-    // Ensure the animated sticker is visible for at least 3000ms
-    const elapsed = Date.now() - startTime;
-    const minDisplayMs = 3000;
-    if (elapsed < minDisplayMs) {
-      await sleep(minDisplayMs - elapsed);
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      await safeReply(ctx, response, { replyToMessage: true });
+      if (ctx.chat?.id) recordReply(ctx.chat.id, queryToProcess);
+    } catch (error) {
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      logger.error('Error handling direct text message', error);
+      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.", { replyToMessage: true });
     }
-
-    await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, response, { replyToMessage: true });
-
-    // Record this reply for repeat-spam detection
-    if (ctx.chat?.id) {
-      recordReply(ctx.chat.id, queryToProcess);
-    }
-
-  } catch (error) {
-    await deleteLoadingSticker(ctx, loadingStickerId);
-    logger.error('Error handling direct text message', error);
-    await safeReply(
-      ctx,
-      "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
-      { replyToMessage: true }
-    );
-  }
+  });
 }
 
 /**
@@ -709,7 +717,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     // ── Step 2: Vision Analysis ─────────────────────────────────────────────
-    if (caption) await ensureOfficialChannelHistorySynced();
+    if (caption) await syncChannelHistoryWithoutHoldingReply();
     const contextInfo = caption
       ? [getRelevantOfficialChannelContext(caption), getGamingNftContextForQuestion(caption)].filter(Boolean).join('\n\n') || undefined
       : undefined;

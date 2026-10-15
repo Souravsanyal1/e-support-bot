@@ -32,6 +32,15 @@ async function runTests() {
     for (const query of ['official website link', 'How does the ecosystem work?', 'timer countdown', 'official telegram group', 'fake link scam', 'who are the admins?']) {
       assert(containsTopicKeyword(query), `Topic trigger should detect support intent keywords: ${query}`);
     }
+    const { shouldReply, recordReply } = await import('../src/utils/messageTrigger');
+    const privateRepeatChat = 990001;
+    recordReply(privateRepeatChat, 'What is Elite Force?');
+    recordReply(privateRepeatChat, 'What is Elite Force?');
+    assert.strictEqual(
+      shouldReply({ text: 'What is Elite Force?', chatType: 'private', isMention: false, isReplyToBot: false, chatId: privateRepeatChat }).shouldReply,
+      true,
+      'Private chats should still answer repeated questions instead of silently dropping them'
+    );
     assert.strictEqual(gamingNft.classifyGamingNftIntent('What is Elite Force Gaming NFT?'), 'definition');
     assert.strictEqual(gamingNft.classifyGamingNftIntent('When will Gaming NFT launch?'), 'launch');
     assert.strictEqual(gamingNft.classifyGamingNftIntent('How can I claim a Gaming NFT?'), 'claim');
@@ -104,6 +113,13 @@ async function runTests() {
     officialPosts.selectRelevantOfficialPosts('Which country was the system built in?', previewPosts)[0]?.messageId,
     201,
     'Country-of-origin wording should match the official post that names the location'
+  );
+  assert.deepStrictEqual(
+    officialPosts.selectRelevantOfficialPosts('What is Elite Force?', [
+      { messageId: 205, postedAt: 1791849600, text: 'What Is Elite Force Gaming NFT? Elite Force Gaming NFT is a blockchain-based digital asset designed for the future Elite Force Gaming Ecosystem.' },
+    ]),
+    [],
+    'A general Elite Force definition query must not match a specific Gaming NFT announcement just because both mention Elite Force'
   );
   const unmatchedChannelContext = officialPosts.getRelevantOfficialChannelContext(
     'What is the maximum token supply?',

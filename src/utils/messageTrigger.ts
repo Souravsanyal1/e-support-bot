@@ -275,9 +275,9 @@ export function shouldReply(ctx: ShouldReplyContext): TriggerDecision {
     isRepeat,
   };
 
-  // Private chats always respond (unless repeat spam)
-  if (isPrivate && !isRepeat) return { shouldReply: true, reason: 'private_chat', flags };
-  if (isPrivate && isRepeat) return { shouldReply: false, reason: 'repeat_private', flags };
+  // A private user expects a direct answer each time; repeat throttling applies
+  // only to unsolicited group replies, never to one-to-one support.
+  if (isPrivate) return { shouldReply: true, reason: 'private_chat', flags };
 
   // Direct mention — always reply
   if (isMention) return { shouldReply: true, reason: 'direct_mention', flags };
