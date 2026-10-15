@@ -5,6 +5,11 @@ import { checkMessageLanguage, processAndFilterMessageLanguage } from '../utils/
 import { scheduleAutoDelete } from '../utils/telegram';
 import { languageModeManager } from '../bot/languageMode';
 import { isAdmin } from './adminAuth';
+import { env, AppConfig } from '../config/env.config';
+
+type LanguageFilterSettings = Pick<AppConfig,
+  'englishOnlyMode' | 'englishOnlyAdminExempt' | 'englishOnlyDeleteNonEnglish' |
+  'englishOnlyWarnUser' | 'englishOnlyMinConfidence'>;
 
 /**
  * Global Language Moderation Middleware.
@@ -23,10 +28,20 @@ import { isAdmin } from './adminAuth';
  */
 export async function languageFilterMiddleware(
   ctx: Context,
-  next: NextFunction
+  next: NextFunction,
+  overrides: Partial<LanguageFilterSettings> = {}
 ): Promise<void> {
-  // If language moderation policy is globally disabled in config, pass through
-  if (!LANGUAGE_POLICY.enabled) {
+  const settings: LanguageFilterSettings = {
+    englishOnlyMode: env.englishOnlyMode,
+    englishOnlyAdminExempt: env.englishOnlyAdminExempt,
+    englishOnlyDeleteNonEnglish: env.englishOnlyDeleteNonEnglish,
+    englishOnlyWarnUser: env.englishOnlyWarnUser,
+    englishOnlyMinConfidence: env.englishOnlyMinConfidence,
+    ...overrides,
+  };
+
+  // Either the legacy policy switch or the environment switch can disable moderation.
+  if (!LANGUAGE_POLICY.enabled || !settings.englishOnlyMode) {
     await next();
     return;
   }
@@ -53,9 +68,9 @@ export async function languageFilterMiddleware(
     return;
   }
 
-  // 3. Admin exemption: Authorized admin commands bypass language moderation
+  // 3. Configured admin exemption applies to every message from an authorized admin.
   const userId = ctx.from?.id;
-  if (userId && isAdmin(userId) && rawText.startsWith('/')) {
+  if (userId && isAdmin(userId) && (settings.englishOnlyAdminExempt || rawText.startsWith('/'))) {
     await next();
     return;
   }
@@ -88,7 +103,8 @@ export async function languageFilterMiddleware(
   const processed = processAndFilterMessageLanguage(textToCheck);
 
   // If detected as non-English or contains substantial non-English (including mixed)
-  const isRejected = !langCheck.isEnglish || !processed.isAllowed;
+  const hasNonEnglishSignal = !langCheck.isEnglish || !processed.isAllowed;
+  const isRejected = hasNonEnglishSignal && langCheck.confidence >= settings.englishOnlyMinConfidence;
 
   if (isRejected) {
     const isPrivate = ctx.chat?.type === 'private';
@@ -105,30 +121,34 @@ export async function languageFilterMiddleware(
       detectedLanguages: detectedLangs,
       isMixed: langCheck.isMixed || processed.isMixed,
       reason: langCheck.reason || processed.reason,
+      confidence: langCheck.confidence,
+      minimumConfidence: settings.englishOnlyMinConfidence,
       snippet: textToCheck.slice(0, 60),
     });
 
-    // 7. Instant Message Deletion Across All Chats (Private DMs & Groups)
-    try {
-      await ctx.deleteMessage();
-      logger.info('Deleted non-English message', {
-        chatId: ctx.chat?.id,
-        chatType: ctx.chat?.type,
-        messageId: ctx.msg?.message_id,
-      });
-    } catch (deleteError) {
-      logger.warn('Failed to delete non-English message', {
-        chatId: ctx.chat?.id,
-        chatType: ctx.chat?.type,
-        messageId: ctx.msg?.message_id,
-        error: deleteError instanceof Error ? deleteError.message : String(deleteError),
-      });
+    // 7. Optionally delete the rejected message; it remains blocked from AI either way.
+    if (settings.englishOnlyDeleteNonEnglish) {
+      try {
+        await ctx.deleteMessage();
+        logger.info('Deleted non-English message', {
+          chatId: ctx.chat?.id,
+          chatType: ctx.chat?.type,
+          messageId: ctx.msg?.message_id,
+        });
+      } catch (deleteError) {
+        logger.warn('Failed to delete non-English message', {
+          chatId: ctx.chat?.id,
+          chatType: ctx.chat?.type,
+          messageId: ctx.msg?.message_id,
+          error: deleteError instanceof Error ? deleteError.message : String(deleteError),
+        });
+      }
     }
 
     // Send temporary warning notice with auto-delete timer
-    const shouldSendWarning = isPrivate
+    const shouldSendWarning = settings.englishOnlyWarnUser && (isPrivate
       ? LANGUAGE_POLICY.sendWarningInPrivate
-      : LANGUAGE_POLICY.sendWarningInGroups;
+      : LANGUAGE_POLICY.sendWarningInGroups);
 
     if (shouldSendWarning) {
       try {

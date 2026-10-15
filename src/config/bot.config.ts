@@ -60,6 +60,8 @@ export const ADMIN_COMMANDS = {
   LOGS: 'logs',
   CLEARLOGS: 'clearlogs',
   SUB_ADMIN: 'sub_admin',
+  BAN: 'ban',
+  LIMIT: 'limit',
 } as const;
 
 /**
@@ -81,6 +83,8 @@ export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
   { command: 'language', description: 'Switch language mode (all | english | status)' },
   { command: 'quiz', description: 'Create and manage quizzes for community' },
   { command: 'sub_admin', description: 'Manage sub-admins (add | remove | list)' },
+  { command: 'ban', description: 'Ban a replied-to member permanently or for 24 | 48 | 72 hours' },
+  { command: 'limit', description: 'Temporarily mute a replied-to member (24 | 48 | 72 hours)' },
 ] as const;
 
 /**

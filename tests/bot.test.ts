@@ -10,6 +10,67 @@ import { Context } from 'grammy';
 
 async function runTests() {
   console.log('--- Starting Elite Force Bot Test Suite ---');
+  const fs = await import('fs');
+  const path = await import('path');
+
+  // Gaming NFT topic, safe defaults, intent classification, and authorized registry updates
+  console.log('Testing Gaming NFT knowledge and safety...');
+  const gamingNftPath = path.resolve(process.cwd(), 'knowledge/gaming-nft.json');
+  const savedGamingNftRegistry = fs.readFileSync(gamingNftPath, 'utf8');
+  const gamingNft = await import('../src/knowledge/gaming-nft');
+  try {
+    const topicQueries = [
+      'What is Elite Force Gaming NFT?', 'Game NFT', 'NFT Gaming', 'Play-to-Earn',
+      'NFT rewards and benefits', 'Can NFTs be staked?', 'NFT utility', 'NFT collection',
+      'NFT ownership', 'NFT marketplace', 'NFT minting', 'NFT claim', 'NFT eligibility', 'NFT supply',
+    ];
+    for (const query of topicQueries) {
+      assert.strictEqual(gamingNft.isGamingNftQuestion(query), true, `Should detect Gaming NFT topic: ${query}`);
+    }
+    const { containsTopicKeyword } = await import('../src/utils/messageTrigger');
+    assert(containsTopicKeyword('Is play to earn available?'), 'Topic trigger should detect play to earn terminology');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('What is Elite Force Gaming NFT?'), 'definition');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('When will Gaming NFT launch?'), 'launch');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('How can I claim a Gaming NFT?'), 'claim');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('How many Gaming NFTs will be available?'), 'supply');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('What rewards will holders get?'), 'benefits');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('Can Gaming NFTs be staked?'), 'staking');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('Will NFTs be usable in games?'), 'in_game_utility');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('Is the NFT free or paid?'), 'cost');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('How do I verify the official NFT collection?'), 'collection_verification');
+    assert.strictEqual(gamingNft.classifyGamingNftIntent('Is this NFT claim link legitimate?'), 'claim_link_safety');
+
+    let context = gamingNft.getGamingNftKnowledgeContext();
+    assert(context.includes('No Elite Force Gaming NFT features or specifics are currently officially confirmed'));
+    assert(context.includes('launch or mint dates'));
+    assert(context.includes('rewards'));
+    assert(context.includes('seed phrase or private key'));
+    assert(context.includes('https://t.me/Elite_Force_Official'));
+    assert(context.includes('may represent a digital collectible'), 'General Gaming NFT explanation should be available');
+    assert(!context.includes('guaranteed profit'), 'Must not promise NFT returns');
+
+    const registryFeature = {
+      featureName: 'Gaming NFT collection', description: 'Officially launched collection.', status: 'live',
+      officialAnnouncementReference: 'https://t.me/Elite_Force_Official/123', nftSupply: 500,
+      mintingOrClaimEligibility: 'Eligible community members', utilityAndBenefits: 'In-game access',
+      lastUpdated: '2026-10-15T00:00:00.000Z', statusUpdateAuthorized: true,
+    };
+    fs.writeFileSync(gamingNftPath, JSON.stringify({ features: [registryFeature] }, null, 2));
+    context = gamingNft.getGamingNftKnowledgeContext();
+    assert(context.includes('Gaming NFT collection (live)'), 'Authorized official status should be reflected');
+    assert(context.includes('Officially confirmed supply: 500'));
+    assert(context.includes('Eligible community members'));
+    assert(context.includes('In-game access'));
+
+    fs.writeFileSync(gamingNftPath, JSON.stringify({ features: [{ ...registryFeature, statusUpdateAuthorized: false }] }, null, 2));
+    context = gamingNft.getGamingNftKnowledgeContext();
+    assert(!context.includes('Gaming NFT collection (live)'), 'Unauthorized status update must not be treated as fact');
+    fs.writeFileSync(gamingNftPath, JSON.stringify({ features: [{ ...registryFeature, officialAnnouncementReference: 'https://example.com/fake', statusUpdateAuthorized: true }] }, null, 2));
+    assert(!gamingNft.getGamingNftKnowledgeContext().includes('Gaming NFT collection (live)'), 'Non-official source must not authorize a status');
+  } finally {
+    fs.writeFileSync(gamingNftPath, savedGamingNftRegistry);
+  }
+  console.log('✓ Gaming NFT knowledge and safety passed');
 
   // Dynamically import modules after environment variables are set
   const { sanitizeInputString } = await import('../src/middleware/sanitizer');
@@ -141,6 +202,7 @@ async function runTests() {
   const bangla1 = checkMessageLanguage('কেমন আছেন ভাই?');
   assert.strictEqual(bangla1.isEnglish, false, 'Bengali script must be detected as non-English');
   assert.strictEqual(bangla1.language, 'bangla', 'Language must be bangla');
+  assert.strictEqual(bangla1.confidence, 1, 'Explicit Bengali script should have maximum confidence');
 
   const bangla2 = checkMessageLanguage('কবে লঞ্চ হবে?');
   assert.strictEqual(bangla2.isEnglish, false, 'Bengali launch question must be detected');
@@ -149,6 +211,7 @@ async function runTests() {
   const banglish1 = checkMessageLanguage('kemon acho vai');
   assert.strictEqual(banglish1.isEnglish, false, 'Banglish "kemon acho vai" must be rejected');
   assert.strictEqual(banglish1.language, 'banglish', 'Must identify banglish');
+  assert(banglish1.confidence >= 0.7, 'Explicit Banglish matches should meet the default confidence threshold');
 
   const banglish2 = checkMessageLanguage('vai kobe launch hobe?');
   assert.strictEqual(banglish2.isEnglish, false, 'Banglish launch question must be rejected');
@@ -167,6 +230,12 @@ async function runTests() {
 
   const banglish7 = checkMessageLanguage('thik ache bro');
   assert.strictEqual(banglish7.isEnglish, false, 'Banglish "thik ache" must be rejected');
+
+  for (const romanizedGreeting of ['kmn acho', 'kemn acho']) {
+    const detected = checkMessageLanguage(romanizedGreeting);
+    assert.strictEqual(detected.isEnglish, false, `Common Banglish spelling must be detected: ${romanizedGreeting}`);
+    assert(detected.confidence >= 0.7, 'Explicit Banglish spelling must meet the configured removal threshold');
+  }
 
   // 9c. Other non-English languages (Hindi/Hinglish, Spanish, French, Cyrillic, Arabic)
   const hindi = checkMessageLanguage('kya haal hai bhai');
@@ -284,7 +353,7 @@ async function runTests() {
 
   await languageFilterMiddleware(mockGroupCtx, async () => {
     groupNextCalled = true;
-  });
+  }, { englishOnlyWarnUser: true });
 
   assert.strictEqual(groupDeleted, true, 'In groups, middleware must delete non-English message');
   assert.strictEqual(groupWarningReplied, true, 'In groups, middleware must reply with warning notice');
@@ -311,7 +380,7 @@ async function runTests() {
 
   await languageFilterMiddleware(mockPrivateCtx, async () => {
     privateNextCalled = true;
-  });
+  }, { englishOnlyWarnUser: true });
 
   assert.strictEqual(privateDeletedAttempted, true, 'In private chats, middleware must attempt deleteMessage() to remove non-English message');
   assert.strictEqual(privateWarningReplied, true, 'In private chats, middleware must send warning reply');
@@ -335,7 +404,7 @@ async function runTests() {
 
   await languageFilterMiddleware(mockMixedGroupCtx, async () => {
     mixedNextCalled = true;
-  });
+  }, { englishOnlyMode: true, englishOnlyAdminExempt: false, englishOnlyDeleteNonEnglish: true });
 
   assert.strictEqual(mixedGroupDeleted, true, 'Middleware must delete mixed message with substantial non-English in groups');
   assert.strictEqual(mixedNextCalled, false, 'Middleware must NOT call next() for mixed message with substantial non-English');
@@ -356,7 +425,7 @@ async function runTests() {
 
   await languageFilterMiddleware(mockEnglishCtx, async () => {
     enNextCalled = true;
-  });
+  }, { englishOnlyMode: true, englishOnlyAdminExempt: false });
 
   assert.strictEqual(enDeleted, false, 'Middleware must NOT delete English message');
   assert.strictEqual(enNextCalled, true, 'Middleware MUST call next() for English message');
@@ -379,7 +448,7 @@ async function runTests() {
 
   await languageFilterMiddleware(mockAskBanglishCtx, async () => {
     askNextCalled = true;
-  });
+  }, { englishOnlyMode: true, englishOnlyAdminExempt: false, englishOnlyDeleteNonEnglish: true });
 
   assert.strictEqual(askDeleted, true, 'Middleware must delete pure Banglish /ask command');
   assert.strictEqual(askNextCalled, false, 'Middleware must NOT call next() for Banglish /ask (no reply)');
@@ -400,10 +469,77 @@ async function runTests() {
 
   await languageFilterMiddleware(mockAskEnCtx, async () => {
     askEnNextCalled = true;
-  });
+  }, { englishOnlyMode: true, englishOnlyAdminExempt: false });
 
   assert.strictEqual(askEnDeleted, false, 'Middleware must NOT delete English /ask command');
   assert.strictEqual(askEnNextCalled, true, 'Middleware MUST call next() for English /ask command');
+
+  // Environment switches: disable, confidence gate, delete/warn separation, and admin exemption.
+  let disabledLanguageNext = false;
+  let disabledLanguageDeleted = false;
+  const disabledLanguageCtx = {
+    message: { text: 'কেমন আছেন ভাই?', message_id: 107 },
+    chat: { id: 12345, type: 'group' }, from: { id: 54322 },
+    deleteMessage: async () => { disabledLanguageDeleted = true; },
+  } as unknown as Context;
+  await languageFilterMiddleware(disabledLanguageCtx, async () => { disabledLanguageNext = true; }, { englishOnlyMode: false });
+  assert(disabledLanguageNext && !disabledLanguageDeleted, 'Disabled English-only mode should pass messages through without deletion');
+
+  let uncertainNext = false;
+  const uncertainCtx = {
+    message: { text: 'zxqv blargh qwrty', message_id: 108 },
+    chat: { id: 12345, type: 'group' }, from: { id: 54323 },
+    deleteMessage: async () => { throw new Error('Low confidence detection should not delete'); },
+  } as unknown as Context;
+  await languageFilterMiddleware(uncertainCtx, async () => { uncertainNext = true; }, { englishOnlyMinConfidence: 0.7 });
+  assert(uncertainNext, 'Low-confidence language guesses below configured threshold should pass');
+
+  let lowerThresholdNext = false;
+  let lowerThresholdDeleted = false;
+  await languageFilterMiddleware({
+    ...uncertainCtx,
+    deleteMessage: async () => { lowerThresholdDeleted = true; },
+  } as unknown as Context, async () => { lowerThresholdNext = true; }, { englishOnlyMinConfidence: 0.6 });
+  assert(!lowerThresholdNext && lowerThresholdDeleted, 'Lower threshold should reject the same uncertain text');
+
+  let retainedNext = false;
+  let retainedDelete = false;
+  let retainedWarning = false;
+  const retainedLanguageCtx = {
+    message: { text: 'kobe launch hobe bhai?', message_id: 109 },
+    chat: { id: 12345, type: 'group' }, from: { id: 54324 },
+    deleteMessage: async () => { retainedDelete = true; },
+    reply: async () => { retainedWarning = true; return {}; },
+  } as unknown as Context;
+  await languageFilterMiddleware(retainedLanguageCtx, async () => { retainedNext = true; }, {
+    englishOnlyDeleteNonEnglish: false, englishOnlyWarnUser: true,
+  });
+  assert(!retainedNext && !retainedDelete && retainedWarning, 'Delete-off should retain but block the message, with an optional warning');
+
+  let shortBanglishDeleted = false;
+  let shortBanglishNext = false;
+  await languageFilterMiddleware({
+    message: { text: 'kemn acho', message_id: 112 },
+    chat: { id: 12345, type: 'group' }, from: { id: 54330 },
+    deleteMessage: async () => { shortBanglishDeleted = true; },
+  } as unknown as Context, async () => { shortBanglishNext = true; }, {
+    englishOnlyMode: true, englishOnlyAdminExempt: false, englishOnlyDeleteNonEnglish: true,
+    englishOnlyMinConfidence: 0.7,
+  });
+  assert(shortBanglishDeleted && !shortBanglishNext, 'Short Banglish greeting should be removed and blocked');
+
+  const configModule = await import('../src/config/env.config');
+  const exemptAdminId = 88991234;
+  configModule.env.adminUserIds.add(exemptAdminId);
+  let adminLanguageNext = false;
+  const adminLanguageCtx = {
+    message: { text: 'কেমন আছেন ভাই?', message_id: 110 },
+    chat: { id: 12345, type: 'group' }, from: { id: exemptAdminId },
+  } as unknown as Context;
+  await languageFilterMiddleware(adminLanguageCtx, async () => { adminLanguageNext = true; });
+  assert(adminLanguageNext, 'Configured admin exemption should allow non-English admin messages');
+  configModule.env.adminUserIds.delete(exemptAdminId);
+
 
   // Test scheduleAutoDelete functionality
   console.log('Testing Auto-Delete Message Scheduling (2-minute auto-removal)...');
@@ -527,6 +663,16 @@ async function runTests() {
   // Test 12: Bad Words Filter Middleware
   console.log('Testing Bad Words Filter Middleware...');
   const { badWordsFilterMiddleware } = await import('../src/middleware/badWordsFilter');
+  let adminProfanityNext = false;
+  configModule.env.adminUserIds.add(exemptAdminId);
+  await badWordsFilterMiddleware({
+    message: { text: 'fuck you all', message_id: 208 }, chat: { id: 12345 }, from: { id: exemptAdminId },
+    deleteMessage: async () => { throw new Error('Admin exemption should bypass deletion'); },
+  } as unknown as Context, async () => { adminProfanityNext = true; }, {
+    profanityFilterEnabled: true, profanityAdminExempt: true,
+  });
+  configModule.env.adminUserIds.delete(exemptAdminId);
+  assert(adminProfanityNext, 'Configured admin exemption should allow profanity-containing admin messages');
 
   let badWordMsgDeleted = false;
   let badWordNextCalled = false;
@@ -541,9 +687,13 @@ async function runTests() {
     },
   } as unknown as Context;
 
+  const strictProfanitySettings = {
+    profanityFilterEnabled: true, profanityAutoDelete: true, profanityAdminExempt: false,
+    profanityStrictMode: true, profanityRepeatOffenderEscalation: false,
+  };
   await badWordsFilterMiddleware(mockBadWordCtx, async () => {
     badWordNextCalled = true;
-  });
+  }, strictProfanitySettings);
 
   assert.strictEqual(badWordMsgDeleted, true, 'Middleware must delete message with bad words');
   assert.strictEqual(badWordNextCalled, false, 'Middleware must NOT call next() for message with bad words');
@@ -564,7 +714,7 @@ async function runTests() {
 
   await badWordsFilterMiddleware(mockAskBadCtx, async () => {
     askBadNextCalled = true;
-  });
+  }, strictProfanitySettings);
 
   assert.strictEqual(askBadDeleted, true, 'Middleware must delete /ask command with bad words');
   assert.strictEqual(askBadNextCalled, false, 'Middleware must NOT call next() for /ask with bad words');
@@ -585,11 +735,144 @@ async function runTests() {
 
   await badWordsFilterMiddleware(mockCleanCtx, async () => {
     cleanNextCalled = true;
-  });
+  }, strictProfanitySettings);
 
   assert.strictEqual(cleanDeleted, false, 'Middleware must NOT delete clean message');
   assert.strictEqual(cleanNextCalled, true, 'Middleware must call next() for clean message');
+
+  let disabledProfanityNext = false;
+  let disabledProfanityDelete = false;
+  await badWordsFilterMiddleware({
+    message: { text: 'fuck you all', message_id: 204 }, chat: { id: 12345 }, from: { id: 54325 },
+    deleteMessage: async () => { disabledProfanityDelete = true; },
+  } as unknown as Context, async () => { disabledProfanityNext = true; }, { profanityFilterEnabled: false });
+  assert(disabledProfanityNext && !disabledProfanityDelete, 'Disabled profanity filter should pass messages through');
+
+  let retainedProfanityNext = false;
+  let retainedProfanityDelete = false;
+  let profanityWarning = false;
+  await badWordsFilterMiddleware({
+    message: { text: 'fuck you all', message_id: 205 }, chat: { id: 12345 }, from: { id: 54326 },
+    deleteMessage: async () => { retainedProfanityDelete = true; },
+    reply: async () => { profanityWarning = true; return {}; },
+    api: { sendMessage: async () => true },
+  } as unknown as Context, async () => { retainedProfanityNext = true; }, {
+    profanityAutoDelete: false, profanityWarnUser: true, profanityRepeatOffenderEscalation: false,
+  });
+  assert(!retainedProfanityNext && !retainedProfanityDelete && profanityWarning,
+    'Auto-delete off should retain but block profane messages and optionally warn');
+
+  let relaxedProfanityNext = false;
+  await badWordsFilterMiddleware({
+    message: { text: 'crap token', message_id: 206 }, chat: { id: 12345 }, from: { id: 54327 },
+  } as unknown as Context, async () => { relaxedProfanityNext = true; }, {
+    profanityStrictMode: false, profanityRepeatOffenderEscalation: false,
+  });
+  assert(relaxedProfanityNext, 'Non-strict mode should allow medium severity findings');
+
+  let relaxedHighSeverityNext = false;
+  let relaxedHighSeverityDeleted = false;
+  await badWordsFilterMiddleware({
+    message: { text: 'fuck you all', message_id: 207 }, chat: { id: 12345 }, from: { id: 54328 },
+    deleteMessage: async () => { relaxedHighSeverityDeleted = true; },
+  } as unknown as Context, async () => { relaxedHighSeverityNext = true; }, {
+    profanityStrictMode: false, profanityRepeatOffenderEscalation: false,
+  });
+  assert(!relaxedHighSeverityNext && relaxedHighSeverityDeleted, 'Non-strict mode must still block high/critical findings');
+
+  let escalationNoticeCount = 0;
+  const escalationUserId = 88992345;
+  for (let i = 0; i < 4; i++) {
+    await badWordsFilterMiddleware({
+      message: { text: 'fuck you all', message_id: 220 + i }, chat: { id: 12345 + i }, from: { id: escalationUserId },
+      api: { sendMessage: async (_adminId: number, message: string) => {
+        assert(message.includes(`User ID: ${escalationUserId}`));
+        assert(message.includes('Violations in 24 hours: 3'));
+        assert(!message.includes('fuck you all'), 'Escalation must not include the offending text');
+        escalationNoticeCount++;
+        return true;
+      } },
+    } as unknown as Context, async () => undefined, {
+      profanityAutoDelete: false, profanityRepeatOffenderEscalation: true,
+      adminUserIds: new Set([88993456]),
+    });
+  }
+  assert.strictEqual(escalationNoticeCount, 1, 'Escalation should notify admins once at the third violation in the 24-hour window');
   console.log('✓ Bad words filter middleware passed (deletes abusive English messages, passes clean)');
+
+  console.log('Testing temporary admin ban and limit commands...');
+  const { handleAdminBan, handleAdminLimit } = await import('../src/handlers/moderationHandler');
+  const targetMember = { id: 77889911, is_bot: false, first_name: 'Target' };
+  let bannedUntil = 0;
+  let restrictedUntil = 0;
+  let restrictionPermissions: Record<string, boolean> | undefined;
+  const moderationApi = {
+    getChatMember: async () => ({ status: 'member', user: targetMember }),
+    banChatMember: async (_chatId: number, userId: number, options?: { until_date: number }) => {
+      assert.strictEqual(userId, targetMember.id);
+      bannedUntil = options?.until_date ?? 0;
+      return true;
+    },
+    restrictChatMember: async (_chatId: number, userId: number, permissions: Record<string, boolean>, options: { until_date: number }) => {
+      assert.strictEqual(userId, targetMember.id);
+      restrictionPermissions = permissions;
+      restrictedUntil = options.until_date;
+      return true;
+    },
+  };
+  const beforeBan = Math.floor(Date.now() / 1000);
+  await handleAdminBan({
+    message: { text: '/ban 24', reply_to_message: { from: targetMember } },
+    chat: { id: -100445566, type: 'supergroup' }, from: { id: 77712345 },
+    api: moderationApi, reply: async () => ({ message_id: 223 }),
+  } as unknown as Context);
+  assert(bannedUntil >= beforeBan + 24 * 60 * 60 && bannedUntil <= beforeBan + 24 * 60 * 60 + 1,
+    '/ban 24 should apply a 24-hour Telegram ban');
+
+  const before48HourBan = Math.floor(Date.now() / 1000);
+  await handleAdminBan({
+    message: { text: '/ban 48', reply_to_message: { from: targetMember } },
+    chat: { id: -100445566, type: 'supergroup' }, from: { id: 77712345 },
+    api: moderationApi, reply: async () => ({ message_id: 226 }),
+  } as unknown as Context);
+  assert(bannedUntil >= before48HourBan + 48 * 60 * 60 && bannedUntil <= before48HourBan + 48 * 60 * 60 + 1,
+    '/ban 48 should apply a 48-hour Telegram ban');
+
+  let permanentBanApplied = false;
+  let permanentConfirmation = '';
+  await handleAdminBan({
+    message: { text: '/ban', reply_to_message: { from: targetMember } },
+    chat: { id: -100445566, type: 'supergroup' }, from: { id: 77712345 },
+    api: { ...moderationApi, banChatMember: async (_chatId: number, userId: number, options?: { until_date: number }) => {
+      assert.strictEqual(userId, targetMember.id);
+      assert.strictEqual(options, undefined, 'Permanent bans must omit the expiry time');
+      permanentBanApplied = true;
+      return true;
+    } },
+    reply: async (text: string) => { permanentConfirmation = text; return { message_id: 227 }; },
+  } as unknown as Context);
+  assert.strictEqual(permanentBanApplied, true, 'Bare /ban should permanently ban the replied-to member');
+  assert(permanentConfirmation.includes('permanently banned'), 'Permanent ban confirmation should say it is permanent');
+
+  const beforeLimit = Math.floor(Date.now() / 1000);
+  await handleAdminLimit({
+    message: { text: '/limit 72', reply_to_message: { from: targetMember } },
+    chat: { id: -100445566, type: 'supergroup' }, from: { id: 77712345 },
+    api: moderationApi, reply: async () => ({ message_id: 224 }),
+  } as unknown as Context);
+  assert(restrictedUntil >= beforeLimit + 72 * 60 * 60 && restrictedUntil <= beforeLimit + 72 * 60 * 60 + 1,
+    '/limit 72 should apply a 72-hour restriction');
+  assert.strictEqual(restrictionPermissions?.can_send_messages, false, '/limit must prevent sending messages');
+
+  let invalidDurationActioned = false;
+  await handleAdminBan({
+    message: { text: '/ban 12', reply_to_message: { from: targetMember } },
+    chat: { id: -100445566, type: 'supergroup' }, from: { id: 77712345 },
+    api: { ...moderationApi, banChatMember: async () => { invalidDurationActioned = true; return true; } },
+    reply: async () => ({ message_id: 225 }),
+  } as unknown as Context);
+  assert.strictEqual(invalidDurationActioned, false, 'Only 24, 48, and 72-hour durations should be accepted');
+  console.log('✓ Admin permanent/temporary ban and limit commands passed');
 
   // Test 13: Secure Admin Permission Guard
   console.log('Testing Secure Admin Permission Guard...');
@@ -639,8 +922,6 @@ async function runTests() {
 
   // Test 14: Bot Shutdown, Permanent Shutdown, and Manual Reactivation
   console.log('Testing Bot Shutdown, Persistence & Reactivation State...');
-  const path = await import('path');
-  const fs = await import('fs');
   const { BotStateManager } = await import('../src/bot/state');
 
   const testStateFile = path.resolve(process.cwd(), 'data', 'test_bot_state.json');

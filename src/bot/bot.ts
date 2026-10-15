@@ -7,6 +7,7 @@ import { sanitizeMessageMiddleware } from '../middleware/sanitizer';
 import { languageFilterMiddleware } from '../middleware/languageFilter';
 import { badWordsFilterMiddleware } from '../middleware/badWordsFilter';
 import { requireAdmin } from '../middleware/adminAuth';
+import { handleAdminBan, handleAdminLimit } from '../handlers/moderationHandler';
 import {
   handleStartCommand,
   handleHelpCommand,
@@ -108,6 +109,8 @@ export function createBot(): Bot {
   bot.command('clearlogs', requireAdmin, handleAdminClearLogs);
   bot.command('language', requireAdmin, handleAdminLanguage);
   bot.command(['sub_admin', 'subadmin'], requireAdmin, handleAdminSubAdmin);
+  bot.command('ban', requireAdmin, handleAdminBan);
+  bot.command('limit', requireAdmin, handleAdminLimit);
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);

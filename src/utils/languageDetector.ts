@@ -16,6 +16,8 @@
 export interface LanguageCheckResult {
   isEnglish: boolean;
   language: 'english' | 'bangla' | 'banglish' | 'other_non_english';
+  /** Deterministic confidence score from 0 to 1; concrete script/phrase matches score highest. */
+  confidence: number;
   isMixed?: boolean;
   reason?: string;
 }
@@ -38,7 +40,7 @@ export const BANGLISH_WORDS = new Set([
   'eita', 'eta', 'eitar', 'etar', 'oita', 'ota', 'oitar', 'otar', 'egulo', 'ogulo',
 
   // Question words / Interrogatives
-  'kobe', 'kothay', 'kothai', 'kemne', 'kemon', 'keno', 'koto', 'konta', 'konti', 'kader', 'kake', 'ki', 'kee',
+  'kobe', 'kothay', 'kothai', 'kemne', 'kemon', 'kmn', 'kemn', 'keno', 'koto', 'konta', 'konti', 'kader', 'kake', 'ki', 'kee',
 
   // Common Verbs & Auxiliaries (various tenses/forms)
   'hobe', 'hobena', 'hobar', 'hocche', 'hoche', 'hoise', 'hoyeche', 'holo', 'hoilo', 'hoyni', 'hoini', 'hoba', 'hocen',
@@ -73,7 +75,7 @@ export const BANGLISH_WORDS = new Set([
   'shotti', 'mittha', 'naki', 'nki',
   'khobor', 'obostha', 'somoy', 'shomoy', 'kotha', 'kaj', 'kaaj',
   'dorkar', 'shomossha', 'somossa', 'kichu', 'kisui',
-  'acche', 'ache', 'asen', 'achi', 'aso',
+  'acche', 'ache', 'asen', 'achi', 'aso', 'acho', 'accho', 'achho',
   'bolod', 'pagol', 'boka', 'choda', 'bokachoda', 'baal', 'magi',
 ]);
 
@@ -83,6 +85,12 @@ export const BANGLISH_PHRASES = [
   'ki obostha',
   'ki obstha',
   'kemon acho',
+  'kmn acho',
+  'kemn acho',
+  'kmn accho',
+  'kemn accho',
+  'kmn achho',
+  'kemn achho',
   'kemon achen',
   'kemon aso',
   'kemon asen',
@@ -248,7 +256,7 @@ export function normalizeText(text: string): string {
 export function checkMessageLanguage(rawText: string): LanguageCheckResult {
   const text = rawText.trim();
   if (!text) {
-    return { isEnglish: true, language: 'english' };
+    return { isEnglish: true, language: 'english', confidence: 1 };
   }
 
   // 1. Check for Bengali Unicode script characters (\u0980-\u09FF)
@@ -257,6 +265,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return {
       isEnglish: false,
       language: 'bangla',
+      confidence: 1,
       isMixed: hasEnglishWords,
       reason: hasEnglishWords ? 'Mixed message containing Bengali script' : 'Bengali script detected',
     };
@@ -268,6 +277,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return {
       isEnglish: false,
       language: 'other_non_english',
+      confidence: 1,
       isMixed: hasEnglishWords,
       reason: hasEnglishWords ? 'Mixed message containing non-Latin script' : 'Non-Latin script detected (e.g. Arabic, Cyrillic, Hindi, CJK)',
     };
@@ -277,7 +287,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
 
   // If text only contained URLs, code, or contract addresses (no words left), consider it allowed
   if (!normalized) {
-    return { isEnglish: true, language: 'english' };
+    return { isEnglish: true, language: 'english', confidence: 1 };
   }
 
   // 3. Check for multi-word Banglish phrases
@@ -287,6 +297,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
       return {
         isEnglish: false,
         language: 'banglish',
+        confidence: 0.98,
         isMixed: hasEnglishWords,
         reason: `Banglish phrase matched: "${phrase}"`,
       };
@@ -300,6 +311,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
       return {
         isEnglish: false,
         language: 'other_non_english',
+        confidence: 0.98,
         isMixed: hasEnglishWords,
         reason: `Foreign phrase matched: "${phrase}"`,
       };
@@ -309,7 +321,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
   // Tokenize into clean alphabetic words
   const words = normalized.match(/[a-z]+/g) || [];
   if (words.length === 0) {
-    return { isEnglish: true, language: 'english' };
+    return { isEnglish: true, language: 'english', confidence: 1 };
   }
 
   // Count recognized English words vs non-English words to evaluate mixed messages
@@ -334,6 +346,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return {
       isEnglish: false,
       language: isBanglish ? 'banglish' : 'other_non_english',
+      confidence: 0.97,
       isMixed,
       reason: isMixed
         ? `Mixed message containing non-English expression: "${firstNonEn}"`
@@ -350,6 +363,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
         return {
           isEnglish: false,
           language: 'banglish',
+          confidence: 0.85,
           isMixed,
           reason: `Banglish suffix pattern matched on word: "${word}"`,
         };
@@ -358,10 +372,18 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
   }
 
   // 6. Ambiguity Safeguard & General English Ratio Validation
-  // For short messages (1-2 words), do not reject based on missing dictionary entries.
-  // This prevents false positives on technical jargon, abbreviations, user names, or greetings.
+  // Keep known English terms/greetings safe, but classify unknown short text as a
+  // low-confidence non-English candidate so strict-mode moderation can remove it.
   if (words.length <= 2) {
-    return { isEnglish: true, language: 'english' };
+    if (recognizedEnglishWords.length > 0) {
+      return { isEnglish: true, language: 'english', confidence: 0.9 };
+    }
+    return {
+      isEnglish: false,
+      language: 'other_non_english',
+      confidence: 0.65,
+      reason: 'Short message contains words not recognized as English',
+    };
   }
 
   // For 3+ words: verify that recognized English vocabulary is present
@@ -372,6 +394,7 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return {
       isEnglish: false,
       language: 'other_non_english',
+      confidence: 0.65,
       reason: `No recognizable English vocabulary in message (${words.length} words)`,
     };
   }
@@ -381,11 +404,12 @@ export function checkMessageLanguage(rawText: string): LanguageCheckResult {
     return {
       isEnglish: false,
       language: 'other_non_english',
+      confidence: 0.65,
       reason: `Low English word density (${Math.round(recognizedRatio * 100)}% recognized)`,
     };
   }
 
-  return { isEnglish: true, language: 'english' };
+  return { isEnglish: true, language: 'english', confidence: 0.9 };
 }
 
 export interface ProcessedLanguageResult {

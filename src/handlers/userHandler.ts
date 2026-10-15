@@ -32,6 +32,7 @@ import { registerAdminCommandsForUser } from '../bot/commands';
 import { checkPromptSecurity } from '../utils/promptSecurity';
 import { logMessageToFile } from '../utils/messageLogger';
 import { isImageDocument } from '../utils/imageDetector';
+import { getGamingNftContextForQuestion } from '../knowledge/gaming-nft';
 import { languageModeManager } from '../bot/languageMode';
 import {
   shouldReply as smartShouldReply,
@@ -148,6 +149,8 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     '• `/off [reason]` — Disable bot responses temporarily or permanently',
     '• `/on` — Re-enable bot responses',
     '• `/time <duration>` — Schedule temporary downtime with auto-reactivation',
+    '• `/ban` — Reply to a member to permanently ban them; add `24|48|72` for a temporary ban',
+    '• `/limit 24|48|72` — Reply to a member to temporarily mute them',
   ].join('\n');
 
   const messageParts = [
@@ -259,7 +262,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       query,
       getLaunchAnnouncementForQuestion(query),
-      getRelevantOfficialChannelContext(query),
+      [getRelevantOfficialChannelContext(query), getGamingNftContextForQuestion(query)].filter(Boolean).join('\n\n') || null,
       ctx.chat?.type === 'private' ? ctx.from?.id : undefined
     );
 
@@ -432,7 +435,7 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     const response = await generateSupportResponse(
       queryToProcess,
       getLaunchAnnouncementForQuestion(queryToProcess),
-      getRelevantOfficialChannelContext(queryToProcess),
+      [getRelevantOfficialChannelContext(queryToProcess), getGamingNftContextForQuestion(queryToProcess)].filter(Boolean).join('\n\n') || null,
       ctx.chat?.type === 'private' ? ctx.from?.id : undefined
     );
 
@@ -689,7 +692,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
     // ── Step 2: Vision Analysis ─────────────────────────────────────────────
     const contextInfo = caption
-      ? getRelevantOfficialChannelContext(caption) || undefined
+      ? [getRelevantOfficialChannelContext(caption), getGamingNftContextForQuestion(caption)].filter(Boolean).join('\n\n') || undefined
       : undefined;
 
     const analysisResult = await analyzeImageWithAI({

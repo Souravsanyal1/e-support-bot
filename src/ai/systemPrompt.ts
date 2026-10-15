@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { ELITE_FORCE_KNOWLEDGE, SAFETY_BOUNDARIES } from '../config/knowledge.config';
 import { languageModeManager } from '../bot/languageMode';
+import { getGamingNftKnowledgeContext } from '../knowledge/gaming-nft';
 
 export interface PromptConfig {
   assistantName: string;
@@ -170,6 +171,11 @@ RICH FORMATTING (BOLD, ITALIC) & ANIMATED EMOJIS (CRITICAL)
   • 🤑 (Money Face — rewards & ecosystem utility)
 - These emojis are linked to Telegram animated custom icons from the official @Elite_Force_Official pack!
 ${customTrainingSection}
+==================================================
+ELITE FORCE GAMING NFT KNOWLEDGE
+==================================================
+${getGamingNftKnowledgeContext()}
+
 ==================================================
 OFFICIAL VERIFIED ECOSYSTEM KNOWLEDGE
 ==================================================

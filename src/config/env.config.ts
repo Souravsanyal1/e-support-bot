@@ -260,9 +260,9 @@ function loadAndValidateConfig(): AppConfig {
     process.env.ENGLISH_ONLY_DELETE_NON_ENGLISH?.trim().toLowerCase() !== 'false'; // default: true
   const englishOnlyWarnUser =
     process.env.ENGLISH_ONLY_WARN_USER?.trim().toLowerCase() === 'true'; // default: false
-  const rawEngConf = parseFloat(process.env.ENGLISH_ONLY_MIN_CONFIDENCE?.trim() || '0.70');
+  const rawEngConf = parseFloat(process.env.ENGLISH_ONLY_MIN_CONFIDENCE?.trim() || '0.60');
   const englishOnlyMinConfidence =
-    isNaN(rawEngConf) || rawEngConf < 0 || rawEngConf > 1 ? 0.70 : rawEngConf;
+    isNaN(rawEngConf) || rawEngConf < 0 || rawEngConf > 1 ? 0.60 : rawEngConf;
 
   // ── Profanity & Abuse Moderation ──────────────────────────────────────────
   const profanityFilterEnabled =
