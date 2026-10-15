@@ -13,6 +13,12 @@ export interface AppConfig {
   /** OpenAI API key — used exclusively for the free omni-moderation-latest endpoint. No charges for moderation calls. */
   readonly openaiApiKey?: string;
   readonly adminUserIds: ReadonlySet<number>;
+  readonly adminChatId?: number;
+  readonly botUsername: string;
+  readonly groupReplyCooldownSeconds: number;
+  readonly contextMessages: number;
+  readonly memoryTtlHours: number;
+  readonly scanAllGroupMessages: boolean;
   readonly timezone: string;
   readonly botMode: 'polling' | 'webhook';
   readonly port: number;
@@ -209,6 +215,21 @@ function loadAndValidateConfig(): AppConfig {
     process.env.IMAGE_MODERATION_WARNING_MESSAGE?.trim() ||
     '⚠️ Inappropriate, adult, or nude images are strictly prohibited in Elite Force community chats.';
 
+  // Bot identity & group behaviour
+  const botUsername = process.env.BOT_USERNAME?.trim().replace(/^@/, '') || '';
+
+  const rawCooldown = parseInt(process.env.GROUP_REPLY_COOLDOWN_SECONDS?.trim() || '3', 10);
+  const groupReplyCooldownSeconds = isNaN(rawCooldown) || rawCooldown < 0 ? 3 : rawCooldown;
+
+  const rawContextMessages = parseInt(process.env.CONTEXT_MESSAGES?.trim() || '5', 10);
+  const contextMessages = isNaN(rawContextMessages) || rawContextMessages < 1 ? 5 : rawContextMessages;
+
+  const rawMemoryTtl = parseFloat(process.env.MEMORY_TTL_HOURS?.trim() || '24');
+  const memoryTtlHours = isNaN(rawMemoryTtl) || rawMemoryTtl <= 0 ? 24 : rawMemoryTtl;
+
+  const scanAllGroupMessages =
+    process.env.SCAN_ALL_GROUP_MESSAGES?.trim().toLowerCase() === 'true';
+
   return {
     telegramBotToken,
     aiProvider,
@@ -218,6 +239,11 @@ function loadAndValidateConfig(): AppConfig {
     geminiModel,
     openaiApiKey,
     adminUserIds,
+    botUsername,
+    groupReplyCooldownSeconds,
+    contextMessages,
+    memoryTtlHours,
+    scanAllGroupMessages,
     timezone,
     botMode,
     port: isNaN(port) ? 3000 : port,

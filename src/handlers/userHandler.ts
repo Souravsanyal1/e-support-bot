@@ -33,6 +33,12 @@ import { checkPromptSecurity } from '../utils/promptSecurity';
 import { logMessageToFile } from '../utils/messageLogger';
 import { isImageDocument } from '../utils/imageDetector';
 import { languageModeManager } from '../bot/languageMode';
+import {
+  shouldReply as smartShouldReply,
+  recordReply,
+} from '../utils/messageTrigger';
+
+
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
@@ -333,10 +339,39 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     return;
   }
 
+  // ── Smart Trigger Decision ────────────────────────────────────────────────
+  const botUsernameRaw = ctx.me?.username || 'Elite_Force_Support_Bot';
+  const lowerText = text.toLowerCase();
+
+  const isMention =
+    lowerText.includes(`@${botUsernameRaw.toLowerCase()}`) ||
+    lowerText.includes('@eliteforcessupportbot') ||
+    lowerText.includes('@elite_force_support_bot');
+
+  const isReplyToBot =
+    !!ctx.message?.reply_to_message?.from?.id &&
+    ctx.message.reply_to_message.from.id === ctx.me?.id;
+
+  const triggerDecision = smartShouldReply({
+    text,
+    chatType: (ctx.chat?.type as 'private' | 'group' | 'supergroup' | 'channel') || 'private',
+    isMention,
+    isReplyToBot,
+    chatId: ctx.chat?.id ?? 0,
+  });
+
+  if (!triggerDecision.shouldReply) {
+    logger.debug('Smart trigger: message ignored', {
+      reason: triggerDecision.reason,
+      chatId: ctx.chat?.id,
+      userId: ctx.from?.id,
+    });
+    return;
+  }
+
   // Clean prompt by removing bot mention tags
-  const botUsername = ctx.me?.username || 'Elite_Force_Support_Bot';
   const cleanedText = text
-    .replace(new RegExp(`@${botUsername}`, 'gi'), '')
+    .replace(new RegExp(`@${botUsernameRaw}`, 'gi'), '')
     .replace(/@elite_force_support_bot/gi, '')
     .trim();
 
@@ -410,6 +445,12 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
 
     await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, response, { replyToMessage: true });
+
+    // Record this reply for repeat-spam detection
+    if (ctx.chat?.id) {
+      recordReply(ctx.chat.id, queryToProcess);
+    }
+
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling direct text message', error);
