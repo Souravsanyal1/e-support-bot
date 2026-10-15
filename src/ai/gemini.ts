@@ -85,7 +85,7 @@ export function getEmergencyKnowledgeResponse(
 
   if (officialPostFallback) return officialPostFallback;
 
-  if (officialChannelContext) {
+  if (officialChannelContext?.includes('RELEVANT OFFICIAL TELEGRAM SOURCE POSTS')) {
     return `I found an official channel update, but it doesn't confirm the detail you're asking about. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for the latest information.`;
   }
 
@@ -158,7 +158,7 @@ export function getEmergencyKnowledgeResponse(
 }
 
 function getOfficialPostFallback(context?: string | null): string | null {
-  if (!context) return null;
+  if (!context?.includes('RELEVANT OFFICIAL TELEGRAM SOURCE POSTS')) return null;
   const jsonStart = context.indexOf('[{');
   if (jsonStart < 0) return null;
   try {

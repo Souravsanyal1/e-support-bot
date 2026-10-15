@@ -118,6 +118,9 @@ async function runTests() {
     96,
     'When multiple strongly relevant posts match, return the newest one first'
   );
+  const alwaysCheckedContext = officialPosts.getRelevantOfficialChannelContext('Tell me a joke', postFixture);
+  assert(alwaysCheckedContext?.includes('LATEST OFFICIAL TELEGRAM POST'), 'Every question should also be checked against the newest official update when no direct match exists');
+  assert(alwaysCheckedContext?.includes('Latest airdrop announcement'), 'Latest official update should be supplied as optional context');
   console.log('✓ Official channel post selection passed');
 
   const { getEmergencyKnowledgeResponse: getOfficialPostFallbackResponse } = await import('../src/ai/gemini');
@@ -128,6 +131,12 @@ async function runTests() {
   );
   assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
   assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
+  const unrelatedFallback = getOfficialPostFallbackResponse(
+    'Tell me a joke',
+    null,
+    alwaysCheckedContext
+  );
+  assert(!unrelatedFallback.includes('Latest airdrop announcement'), 'An unrelated latest update must not replace the user answer');
   const nftPostFallback = getOfficialPostFallbackResponse(
     'Give me Gaming NFT info',
     null,
