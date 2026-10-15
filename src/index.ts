@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import { Server } from 'http';
+import { timingSafeEqual } from 'node:crypto';
 import { webhookCallback } from 'grammy';
 import { env } from './config/env.config';
 import { logger } from './utils/logger';
@@ -18,8 +19,8 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 /**
- * Starts a keep-alive monitor to prevent free-tier cloud hosts (Render, Glitch, etc.)
- * from going to sleep after 15 minutes of inactivity.
+ * Starts a best-effort health ping. Hosting plans control instance sleep/restarts;
+ * a self-ping is not a guarantee that a free service will stay awake.
  */
 function startKeepAlivePing(port: number): void {
   const externalUrl = process.env.KEEP_ALIVE_URL || process.env.RENDER_EXTERNAL_URL;
@@ -48,7 +49,7 @@ function startKeepAlivePing(port: number): void {
     timer.unref();
   }
 
-  logger.info(`Keep-alive monitor activated: pinging ${pingUrl} every 10 minutes to prevent sleep.`);
+  logger.info(`Best-effort health ping activated: ${pingUrl} every 10 minutes.`);
 }
 
 async function main(): Promise<void> {
@@ -105,19 +106,9 @@ async function main(): Promise<void> {
 
   // Health check endpoint (for cloud health monitoring & keep-awake pingers)
   app.all('/health', (_req: Request, res: Response) => {
-    const syncStatus = knowledgeSyncService.getStatus();
-    res.status(200).json({
-      status: 'healthy',
-      service: "Celia, your System & Group Management Admin",
-      mode: env.botMode,
-      uptimeSeconds: Math.floor(process.uptime()),
-      knowledgeSync: {
-        version: syncStatus.version,
-        lastSuccessfulSyncAt: syncStatus.lastSuccessfulSyncAt,
-        contentHash: syncStatus.contentHash ? syncStatus.contentHash.slice(0, 10) : null,
-        totalCharacters: syncStatus.totalCharacters,
-      },
-    });
+    // Keep the public health response minimal; operational details belong in
+    // authenticated logs/dashboard, not an unauthenticated endpoint.
+    res.status(200).json({ status: 'healthy' });
   });
 
   if (env.botMode === 'webhook') {
@@ -125,7 +116,11 @@ async function main(): Promise<void> {
     app.use('/webhook', (req: Request, res: Response, next) => {
       const secretHeader = req.header('x-telegram-bot-api-secret-token');
 
-      if (!secretHeader || secretHeader !== env.webhookSecret) {
+      const supplied = Buffer.from(secretHeader || '', 'utf8');
+      const expected = Buffer.from(env.webhookSecret || '', 'utf8');
+      const valid = supplied.length > 0 && supplied.length === expected.length
+        && timingSafeEqual(supplied, expected);
+      if (!valid) {
         logger.warn('Rejected unauthorized webhook request: invalid or missing secret token');
         res.status(401).send('Unauthorized');
         return;
@@ -135,7 +130,7 @@ async function main(): Promise<void> {
     });
 
     // Mount Telegram update handler
-    app.use(express.json());
+    app.use(express.json({ limit: '256kb', strict: true }));
     app.post('/webhook', webhookCallback(bot, 'express'));
 
     httpServer = app.listen(env.port, '0.0.0.0', async () => {

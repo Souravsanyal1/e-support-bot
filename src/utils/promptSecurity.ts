@@ -31,6 +31,8 @@ const INJECTION_PATTERNS: readonly RegExp[] = [
   /print\s+(your|the)\s+(system\s+)?(prompt|instructions?)/i,
   /output\s+(your|the)\s+(initial|full|entire|system)\s+(prompt|instructions?)/i,
   /repeat\s+(the\s+)?(first|above|system|initial)\s+(prompt|message|instructions?)/i,
+  /repeat\s+(everything|all\s+text)\s+(above|before\s+this)/i,
+  /translate\s+(your\s+)?(system\s+)?prompt/i,
   /tell\s+me\s+(your|the)\s+(system\s+)?(prompt|instructions?|config)/i,
   /what\s+(is|are)\s+your\s+(hidden|secret|internal)\s+(instructions?|rules?|prompt)/i,
   /display\s+(your|the)\s+(system\s+)?(prompt|rules?|instructions?)/i,
@@ -84,7 +86,19 @@ const SAFE_DECLINE =
  * Returns a result indicating whether the message is a threat and what to reply.
  */
 export function checkPromptSecurity(message: string): SecurityCheckResult {
-  const text = message.trim();
+  // Normalize compatibility characters and remove invisible separators often
+  // used to evade phrase-based checks (for example, "ign​ore instructions").
+  const text = message
+    .normalize('NFKC')
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060\uFEFF]/g, '')
+    .replace(/[Сс]/g, 'c')
+    .replace(/[Аа]/g, 'a')
+    .replace(/[Ее]/g, 'e')
+    .replace(/[Оо]/g, 'o')
+    .replace(/[Рр]/g, 'p')
+    .replace(/[Хх]/g, 'x')
+    .replace(/[Іі]/g, 'i')
+    .trim();
 
   for (const pattern of INJECTION_PATTERNS) {
     if (pattern.test(text)) {

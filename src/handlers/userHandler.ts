@@ -102,6 +102,29 @@ export function getAdminLookupTarget(_ctx: Context, question: string): string | 
 
 const OWNER_PRIVACY_RESPONSE = "I can't identify the owner or share the owner's ID. I can list the other publicly listed admins.";
 
+/** Blocks suspicious instructions before any user text reaches an AI provider. */
+async function rejectUnsafePrompt(ctx: Context, text: string): Promise<boolean> {
+  const result = checkPromptSecurity(text);
+  if (!result.isThreat) return false;
+
+  // Never put attacker-controlled text in operational logs: it may contain
+  // secrets, personal data, or deliberately crafted log content.
+  logger.warn('Prompt security check blocked a suspicious request', {
+    userId: ctx.from?.id,
+    chatId: ctx.chat?.id,
+    threatType: result.threatType,
+    messageLength: text.length,
+    entryPoint: ctx.message?.photo || ctx.message?.document ? 'image_caption' : 'text',
+  });
+
+  if (ctx.chat?.type === 'private') {
+    await safeReply(ctx, result.safeResponse, { replyToMessage: true });
+  } else {
+    try { await ctx.deleteMessage(); } catch { /* bot may not have delete permission */ }
+  }
+  return true;
+}
+
 export async function getOfficialChannelAdmins(
   ctx: Context,
   targetChatId: string | number = OFFICIAL_COMMUNITY_GROUP_ID
@@ -288,6 +311,8 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     return;
   }
 
+  if (await rejectUnsafePrompt(ctx, query)) return;
+
   if (isOwnerIdentityQuery(query)) {
     await safeReply(ctx, OWNER_PRIVACY_RESPONSE);
     return;
@@ -435,23 +460,7 @@ export async function handleTextMessage(
   }
 
   // ── Prompt Injection & Security Attack Detection ─────────────────────────
-  const securityCheck = checkPromptSecurity(queryToProcess);
-  if (securityCheck.isThreat) {
-    logger.warn('Prompt injection / security attack detected and blocked', {
-      userId: ctx.from?.id,
-      username: ctx.from?.username,
-      chatId: ctx.chat?.id,
-      threatType: securityCheck.threatType,
-      message: queryToProcess.slice(0, 100),
-    });
-    // Silently delete in groups, give safe decline in private
-    if (ctx.chat?.type !== 'private') {
-      try { await ctx.deleteMessage(); } catch { /* ignore */ }
-    } else {
-      await safeReply(ctx, securityCheck.safeResponse, { replyToMessage: true });
-    }
-    return;
-  }
+  if (await rejectUnsafePrompt(ctx, queryToProcess)) return;
 
   // ── Message Logging (non-admin users only) ────────────────────────────────
   if (!isAdmin(ctx.from?.id)) {
@@ -567,6 +576,8 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
   }
 
   const caption = ctx.message?.caption?.trim();
+
+  if (caption && await rejectUnsafePrompt(ctx, caption)) return;
 
   // If caption has non-English text or bad words, enforce community guidelines
   if (caption) {
