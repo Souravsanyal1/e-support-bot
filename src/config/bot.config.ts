@@ -59,6 +59,7 @@ export const ADMIN_COMMANDS = {
   LOOKUP: 'lookup',
   LOGS: 'logs',
   CLEARLOGS: 'clearlogs',
+  SUB_ADMIN: 'sub_admin',
 } as const;
 
 /**
@@ -79,6 +80,7 @@ export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
   { command: 'clearlogs', description: 'Clear the message log file' },
   { command: 'language', description: 'Switch language mode (all | english | status)' },
   { command: 'quiz', description: 'Create and manage quizzes for community' },
+  { command: 'sub_admin', description: 'Manage sub-admins (add | remove | list)' },
 ] as const;
 
 /**

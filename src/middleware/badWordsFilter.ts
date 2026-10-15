@@ -1,7 +1,7 @@
 import { Context, NextFunction } from 'grammy';
-import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
 import { checkBadWords } from '../utils/badWordsDetector';
+import { isAdmin } from './adminAuth';
 
 /**
  * Global English Bad Words & Profanity Moderation Middleware.
@@ -33,7 +33,7 @@ export async function badWordsFilterMiddleware(
 
   // 3. Admin exemption for admin commands
   const userId = ctx.from?.id;
-  if (userId && env.adminUserIds.has(userId) && rawText.startsWith('/')) {
+  if (userId && isAdmin(userId) && rawText.startsWith('/')) {
     await next();
     return;
   }

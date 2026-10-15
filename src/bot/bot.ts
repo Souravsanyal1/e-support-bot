@@ -31,6 +31,7 @@ import {
   handleAdminLogs,
   handleAdminClearLogs,
   handleAdminLanguage,
+  handleAdminSubAdmin,
 } from '../handlers/adminHandler';
 import { groupImageModerationMiddleware } from '../middleware/groupImageModeration';
 import { isImageDocument } from '../utils/imageDetector';
@@ -106,6 +107,7 @@ export function createBot(): Bot {
   bot.command('logs', requireAdmin, handleAdminLogs);
   bot.command('clearlogs', requireAdmin, handleAdminClearLogs);
   bot.command('language', requireAdmin, handleAdminLanguage);
+  bot.command(['sub_admin', 'subadmin'], requireAdmin, handleAdminSubAdmin);
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);

@@ -1,6 +1,7 @@
 import { Context, NextFunction } from 'grammy';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
+import { subAdminManager } from '../services/subAdminManager';
 
 /**
  * Helper to check if a numeric user ID is an authorized admin.
@@ -9,7 +10,7 @@ export function isAdmin(userId?: number): boolean {
   if (!userId) {
     return false;
   }
-  if (env.adminUserIds.has(userId)) {
+  if (env.adminUserIds.has(userId) || subAdminManager.isSubAdmin(userId)) {
     return true;
   }
   // Also check runtime environment variables directly

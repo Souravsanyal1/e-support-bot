@@ -1504,6 +1504,102 @@ async function runTests() {
 
   console.log('✓ Admin /quiz creation, +1 point system & /point command passed');
 
+  // Test: Sub-Admin Dynamic Management & Persistence (/sub_admin)
+  console.log('Testing Sub-Admin Dynamic Management (/sub_admin)...');
+  const { SubAdminManager, subAdminManager } = await import('../src/services/subAdminManager');
+  const { handleAdminSubAdmin } = await import('../src/handlers/adminHandler');
+
+  const testSubAdminPath = path.resolve(process.cwd(), 'data', 'test_sub_admins.json');
+  if (fs.existsSync(testSubAdminPath)) {
+    fs.unlinkSync(testSubAdminPath);
+  }
+
+  SubAdminManager.resetInstanceForTesting(testSubAdminPath);
+  const primaryAdminId = 6427121076;
+  const newSubAdminId = 5566778899;
+  const nonAdminId = 1122334455;
+
+  // 1. Initial check
+  assert.strictEqual(subAdminManager.isSubAdmin(newSubAdminId), false, 'New user should not be sub-admin initially');
+  assert.strictEqual(isAdmin(newSubAdminId), false, 'isAdmin should return false for new user initially');
+
+  // 2. Non-primary admin attempts to add sub-admin -> Blocked
+  let nonAdminReply = '';
+  const nonAdminCtx = {
+    from: { id: nonAdminId },
+    message: { text: `/sub_admin add ${newSubAdminId}` },
+    reply: async (text: string) => {
+      nonAdminReply = text;
+      return { message_id: 3001 };
+    },
+    api: { setMyCommands: async () => true },
+  } as unknown as Context;
+
+  await handleAdminSubAdmin(nonAdminCtx);
+  assert(nonAdminReply.includes('Permission Denied'), 'Non-primary admin must be denied from adding sub-admins');
+  assert.strictEqual(subAdminManager.isSubAdmin(newSubAdminId), false);
+
+  // 3. Primary admin adds sub-admin by ID
+  let primaryReply = '';
+  const primaryCtx = {
+    from: { id: primaryAdminId },
+    message: { text: `/sub_admin add ${newSubAdminId} Community Moderator` },
+    reply: async (text: string) => {
+      primaryReply = text;
+      return { message_id: 3002 };
+    },
+    api: { setMyCommands: async () => true },
+  } as unknown as Context;
+
+  await handleAdminSubAdmin(primaryCtx);
+  assert(primaryReply.includes('Sub-Admin Successfully Added'), 'Must confirm sub-admin addition');
+  assert(primaryReply.includes(String(newSubAdminId)), 'Must include new sub-admin ID in confirmation');
+  assert.strictEqual(subAdminManager.isSubAdmin(newSubAdminId), true, 'User must now be recorded as sub-admin');
+  assert.strictEqual(isAdmin(newSubAdminId), true, 'isAdmin must now recognize sub-admin');
+
+  // 4. Persistence verification: reload from disk
+  SubAdminManager.resetInstanceForTesting(testSubAdminPath);
+  assert.strictEqual(subAdminManager.isSubAdmin(newSubAdminId), true, 'Sub-admin must persist across reloads');
+
+  // 5. List command
+  let listReply = '';
+  const listCtx = {
+    from: { id: newSubAdminId },
+    message: { text: '/sub_admin list' },
+    reply: async (text: string) => {
+      listReply = text;
+      return { message_id: 3003 };
+    },
+  } as unknown as Context;
+
+  await handleAdminSubAdmin(listCtx);
+  assert(listReply.includes('Primary Administrators'), 'List must include Primary Admins section');
+  assert(listReply.includes('Sub-Administrators'), 'List must include Sub-Admins section');
+  assert(listReply.includes(String(newSubAdminId)), 'List must show the added sub-admin ID');
+
+  // 6. Primary admin removes sub-admin
+  let removeReply = '';
+  const removeCtx = {
+    from: { id: primaryAdminId },
+    message: { text: `/sub_admin remove ${newSubAdminId}` },
+    reply: async (text: string) => {
+      removeReply = text;
+      return { message_id: 3004 };
+    },
+  } as unknown as Context;
+
+  await handleAdminSubAdmin(removeCtx);
+  assert(removeReply.includes('Sub-Admin Removed'), 'Must confirm removal of sub-admin');
+  assert.strictEqual(subAdminManager.isSubAdmin(newSubAdminId), false, 'User must no longer be sub-admin');
+  assert.strictEqual(isAdmin(newSubAdminId), false, 'isAdmin must return false after removal');
+
+  // Cleanup test file
+  if (fs.existsSync(testSubAdminPath)) {
+    fs.unlinkSync(testSubAdminPath);
+  }
+  SubAdminManager.resetInstanceForTesting();
+  console.log('✓ Sub-Admin dynamic management (/sub_admin) passed');
+
   // Cleanup timers
   rateLimiter.destroy();
   conversationManager.destroy();

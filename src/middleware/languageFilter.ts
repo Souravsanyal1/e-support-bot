@@ -1,10 +1,10 @@
 import { Context, NextFunction } from 'grammy';
-import { env } from '../config/env.config';
 import { LANGUAGE_POLICY } from '../config/bot.config';
 import { logger } from '../utils/logger';
 import { checkMessageLanguage, processAndFilterMessageLanguage } from '../utils/languageDetector';
 import { scheduleAutoDelete } from '../utils/telegram';
 import { languageModeManager } from '../bot/languageMode';
+import { isAdmin } from './adminAuth';
 
 /**
  * Global Language Moderation Middleware.
@@ -55,7 +55,7 @@ export async function languageFilterMiddleware(
 
   // 3. Admin exemption: Authorized admin commands bypass language moderation
   const userId = ctx.from?.id;
-  if (userId && env.adminUserIds.has(userId) && rawText.startsWith('/')) {
+  if (userId && isAdmin(userId) && rawText.startsWith('/')) {
     await next();
     return;
   }

@@ -2,6 +2,7 @@ import { Context, NextFunction } from 'grammy';
 import { createHmac, randomBytes } from 'node:crypto';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
+import { isAdmin } from './adminAuth';
 
 interface RateLimitRecord {
   timestamps: number[];
@@ -36,7 +37,7 @@ class RateLimiter {
    */
   public isRateLimited(identity: RateLimitIdentity): boolean {
     // Exempt administrators from rate limiting
-    if (typeof identity === 'number' && env.adminUserIds.has(identity)) {
+    if (typeof identity === 'number' && isAdmin(identity)) {
       return false;
     }
 

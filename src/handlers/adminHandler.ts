@@ -7,6 +7,8 @@ import { botStateManager } from '../bot/state';
 import { knowledgeSyncService } from '../services/knowledgeSync';
 import { clearLogFile } from '../utils/messageLogger';
 import { languageModeManager } from '../bot/languageMode';
+import { subAdminManager } from '../services/subAdminManager';
+import { registerAdminCommandsForUser } from '../bot/commands';
 import {
   parseTimeCommand,
   formatTimerConfirmation,
@@ -236,7 +238,7 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
     '',
     `• *User conversation history:* Disabled`,
     `• *Training source:* @Elite_Force_Official only`,
-    `• *Authorized Admins:* ${env.adminUserIds.size}`,
+    `• *Authorized Admins:* ${subAdminManager.getAllAdminIds().size} (${env.adminUserIds.size} Primary, ${subAdminManager.listSubAdmins().length} Sub)`,
     `• *Rate Limit Window:* ${env.rateLimitMaxMessages} msgs / ${env.rateLimitWindowSeconds}s`,
   ].join('\n');
 
@@ -514,4 +516,171 @@ export async function handleAdminLanguage(ctx: Context): Promise<void> {
     `• \`/language status\` — Check current mode`
   );
 }
+
+/**
+ * Handles the admin /sub_admin command.
+ * Allows primary admins to add, remove, and list sub-admins dynamically with JSON persistence.
+ *
+ * Syntax:
+ * - /sub_admin list (or /sub_admin without args) -> Lists all primary and sub-admins
+ * - /sub_admin add <userId> [note] -> Adds a new sub-admin by numeric Telegram ID
+ * - /sub_admin add [note] (as reply to a user's message) -> Adds the replied-to user
+ * - /sub_admin remove <userId> -> Removes a sub-admin
+ * - /sub_admin remove (as reply to a user's message) -> Removes the replied-to user
+ */
+export async function handleAdminSubAdmin(ctx: Context): Promise<void> {
+  const fromUserId = ctx.from?.id;
+  const isPrimary = subAdminManager.isPrimaryAdmin(fromUserId);
+
+  const rawText = ctx.message?.text?.trim() || '';
+  const args = rawText.replace(/^\/sub_?admins?(@\w+)?/i, '').trim();
+  const parts = args.split(/\s+/).filter(Boolean);
+  const action = parts[0]?.toLowerCase();
+
+  // If no action or 'list', display the admin overview
+  if (!action || action === 'list') {
+    const primaryAdmins = Array.from(env.adminUserIds);
+    const subAdmins = subAdminManager.listSubAdmins();
+
+    const primaryText =
+      primaryAdmins.length > 0
+        ? primaryAdmins.map((id) => `• \`${id}\` _(Primary / ENV)_`).join('\n')
+        : '• _None configured_';
+
+    const subText =
+      subAdmins.length > 0
+        ? subAdmins
+            .map((sub, index) => {
+              const userStr = sub.username ? `@${sub.username} (\`${sub.userId}\`)` : `\`${sub.userId}\``;
+              const noteStr = sub.note ? ` — _${sub.note}_` : '';
+              const byStr = sub.addedBy ? ` (by \`${sub.addedBy}\`)` : '';
+              return `${index + 1}. ${userStr}${noteStr}${byStr}`;
+            })
+            .join('\n')
+        : '• _No sub-admins configured yet_';
+
+    const message = [
+      `🛡️ *Elite Force — Administrator Management*`,
+      '',
+      `👑 *Primary Administrators (${primaryAdmins.length}):*`,
+      primaryText,
+      '',
+      `🎖️ *Sub-Administrators (${subAdmins.length}):*`,
+      subText,
+      '',
+      `📖 *Usage Commands:*`,
+      `• \`/sub_admin add <user_id> [note]\` — Add a new sub-admin`,
+      `• \`/sub_admin remove <user_id>\` — Remove a sub-admin`,
+      `• Reply to any message with \`/sub_admin add\` or \`/sub_admin remove\``,
+      `• \`/sub_admin list\` — View this list`,
+    ].join('\n');
+
+    await safeReply(ctx, message);
+    return;
+  }
+
+  // Adding or removing sub-admins is strictly restricted to Primary Administrators
+  if (!isPrimary) {
+    await safeReply(
+      ctx,
+      `⛔ *Permission Denied:* Only Primary Administrators (configured in environment) are authorized to add or remove sub-admins.`
+    );
+    return;
+  }
+
+  // Action: ADD
+  if (action === 'add') {
+    let targetId: number | undefined;
+    let username: string | undefined;
+    let note: string | undefined;
+
+    // Check if command is a reply to another user's message
+    const replyMsg = ctx.message?.reply_to_message;
+    if (replyMsg?.from) {
+      targetId = replyMsg.from.id;
+      username = replyMsg.from.username;
+      note = parts.slice(1).join(' ').trim() || undefined;
+    } else {
+      // Second argument must be the numeric user ID
+      const rawId = parts[1];
+      if (!rawId || isNaN(parseInt(rawId, 10))) {
+        await safeReply(
+          ctx,
+          `⚠️ *Usage Error:*\nPlease provide a valid numeric Telegram User ID or reply to a user's message.\n\nExample:\n\`/sub_admin add 123456789 Community Moderator\``
+        );
+        return;
+      }
+      targetId = parseInt(rawId, 10);
+      note = parts.slice(2).join(' ').trim() || undefined;
+    }
+
+    if (!targetId || targetId <= 0) {
+      await safeReply(ctx, `⚠️ Invalid User ID.`);
+      return;
+    }
+
+    const result = subAdminManager.addSubAdmin(targetId, fromUserId || 0, note, username);
+    if (!result.success) {
+      await safeReply(ctx, `⚠️ ${result.message}`);
+      return;
+    }
+
+    // Try to register admin commands in Telegram scope for the new sub-admin
+    try {
+      await registerAdminCommandsForUser(ctx.api, targetId);
+    } catch {
+      // Non-fatal if the user hasn't messaged the bot yet
+    }
+
+    await safeReply(
+      ctx,
+      `✅ *Sub-Admin Successfully Added!*\n\n` +
+      `• *User ID:* \`${targetId}\`${username ? ` (@${username})` : ''}\n` +
+      `• *Authorized By:* \`${fromUserId}\`\n` +
+      (note ? `• *Note:* ${note}\n` : '') +
+      `\n_This user can now access all administrative features and commands._`
+    );
+    return;
+  }
+
+  // Action: REMOVE / DEL / DELETE
+  if (action === 'remove' || action === 'del' || action === 'delete' || action === 'rm') {
+    let targetId: number | undefined;
+
+    const replyMsg = ctx.message?.reply_to_message;
+    if (replyMsg?.from) {
+      targetId = replyMsg.from.id;
+    } else {
+      const rawId = parts[1];
+      if (!rawId || isNaN(parseInt(rawId, 10))) {
+        await safeReply(
+          ctx,
+          `⚠️ *Usage Error:*\nPlease provide the numeric Telegram User ID to remove, or reply to their message with \`/sub_admin remove\`.\n\nExample:\n\`/sub_admin remove 123456789\``
+        );
+        return;
+      }
+      targetId = parseInt(rawId, 10);
+    }
+
+    const result = subAdminManager.removeSubAdmin(targetId);
+    if (!result.success) {
+      await safeReply(ctx, `⚠️ ${result.message}`);
+      return;
+    }
+
+    await safeReply(
+      ctx,
+      `🗑️ *Sub-Admin Removed!*\n\n` +
+      `User \`${targetId}\` has been revoked and can no longer execute administrative commands.`
+    );
+    return;
+  }
+
+  // Unrecognized action
+  await safeReply(
+    ctx,
+    `⚠️ Unrecognized action: \`${action}\`.\n\nUse:\n• \`/sub_admin add <id> [note]\`\n• \`/sub_admin remove <id>\`\n• \`/sub_admin list\``
+  );
+}
+
 
