@@ -360,6 +360,8 @@ const SEARCH_STOP_WORDS = new Set([
   'why', 'will', 'with', 'you', 'your', 'ki', 'kobe', 'kokhon', 'kiy', 'eta', 'eita',
   'hobe', 'ache', 'ase', 'bolo', 'bolun', 'theke', 'somoy', 'date', 'kon',
   'in', 'this', 'does', 'was', 'were', 'elite', 'force', 'eforce',
+  'about', 'work', 'works', 'working', 'system', 'project', 'information', 'details',
+  'tell', 'explain', 'know', 'get', 'start', 'provide', 'give', 'current', 'status',
 ]);
 
 const SEARCH_CONCEPTS: string[][] = [
@@ -467,13 +469,24 @@ export function getRelevantOfficialChannelContext(
   posts: OfficialChannelPost[] = officialPosts,
   maxResults = 3
 ): string | null {
-  const relevant = selectRelevantOfficialPosts(question, posts, maxResults);
-  if (relevant.length === 0) {
-    return [
-      'OFFICIAL TELEGRAM CHANNEL SEARCH',
-      `Scanned the latest ${Math.min(posts.length, RECENT_POST_WINDOW)} available official channel posts; no relevant text or caption matched this question. Do not use an unrelated channel post as the answer or imply that the channel confirms the requested detail. Say the official channel archive currently has no matching information, and direct the user to https://t.me/EliteForce_Official for updates.`,
-    ].join('\n');
+  // Use the announcement archive for Elite Force facts and update requests,
+  // not for general Web3 education or broad identity questions.
+  const asksForGeneralIdentity = /^\s*(?:(?:what|who)\s+is|tell\s+me\s+about)\s+(?:the\s+)?(?:elite\s*force|e[-\s]?force)[\s?.!,]*$/i.test(question);
+  const asksForOfficialUpdates = /\b(?:official|latest|recent|project|community)?\s*(?:updates?|announcements?)\b/i.test(question);
+  const asksEliteForceSpecific = /\b(?:elite\s*force|e[-\s]?force|gaming\s*nfts?|game\s*nfts?|nft\s*gaming|play[\s-]?to[\s-]?earn|airdrop|launch|listing|presale|whitepaper|token|contract|supply|staking|claim|timer|countdown|website|roadmap|partnership|eligibility|rewards?|country|built|origin)\b/i.test(question);
+  if (asksForGeneralIdentity || (!asksForOfficialUpdates && !asksEliteForceSpecific)) return null;
+
+  let relevant = selectRelevantOfficialPosts(question, posts, maxResults);
+  const asksForProgressFigure = /\b(?:percent(?:age)?|progress|completion|complete|completed|how much.{0,30}(?:airdrop|work|done)|airdrop status)\b/i.test(question);
+  if (asksForProgressFigure) {
+    // Progress figures change over time. Give the model one newest matching
+    // progress post so it cannot combine percentages from older updates.
+    const progressPosts = relevant.filter((post) =>
+      /\b\d+(?:\.\d+)?\s*%|\b(?:progress|complete|completed|completion)\b/i.test(post.text)
+    );
+    if (progressPosts.length) relevant = progressPosts.slice(0, 1);
   }
+  if (relevant.length === 0) return null;
 
   const entries = relevant.map((post) => ({
     source: '@EliteForce_Official',

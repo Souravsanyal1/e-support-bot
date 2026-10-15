@@ -165,19 +165,21 @@ async function callGeminiVision(
   }
 
   const systemInstruction = buildVisionSystemPrompt();
-  const isThinkingModel =
-    env.geminiModel.includes('2.5') || env.geminiModel.includes('thinking');
+  const isGemini3OrNewer = /^gemini-[34]\./.test(env.geminiModel);
+  const isGemini25ThinkingModel = env.geminiModel.includes('2.5') || env.geminiModel.includes('thinking');
 
   const genConfig: Record<string, unknown> = {
     systemInstruction,
-    temperature: 0.3,
     maxOutputTokens: 600,
   };
 
-  if (isThinkingModel) {
+  if (!isGemini3OrNewer) genConfig.temperature = 0.3;
+  if (isGemini25ThinkingModel) {
     genConfig.thinkingConfig = {
       thinkingBudget: 0,
     };
+  } else if (isGemini3OrNewer) {
+    genConfig.thinkingConfig = { thinkingLevel: 'low' };
   }
 
   const timeoutPromise = new Promise<never>((_, reject) => {

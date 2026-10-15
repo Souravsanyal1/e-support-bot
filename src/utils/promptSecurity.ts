@@ -13,6 +13,9 @@
  * Case-insensitive. Any match = potential attack.
  */
 const INJECTION_PATTERNS: readonly RegExp[] = [
+  // Explicit role-claim / override language used to bypass the bot's support rules.
+  /\b(?:system|developer)\s+override\b/i,
+  /\bi\s+am\s+(?:your|the)\s+(?:developer|admin|owner)\b/i,
   // Classic jailbreak openers
   /\b(ignore|disregard|override|bypass)\b.{0,50}\b(knowledge|safety|content)\s+(restrictions?|rules?|limits?|polic(?:y|ies))\b/i,
   /\b(ignore|disregard|override|bypass)\s+(all\s+)?(your\s+)?(system|developer)\s+(prompt|instructions?|rules?)\b/i,

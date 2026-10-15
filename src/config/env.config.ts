@@ -105,7 +105,7 @@ function loadAndValidateConfig(): AppConfig {
       ? rawGeminiKey
       : undefined;
 
-  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-2.5-flash';
+  const geminiModel = process.env.GEMINI_MODEL?.trim() || 'gemini-3.5-flash-lite';
 
   // OpenAI API key — only used for the FREE omni-moderation-latest endpoint
   const rawOpenAIKey = process.env.OPENAI_API_KEY?.trim();

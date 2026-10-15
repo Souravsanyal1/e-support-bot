@@ -2,7 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { ELITE_FORCE_KNOWLEDGE, SAFETY_BOUNDARIES } from '../config/knowledge.config';
 import { languageModeManager } from '../bot/languageMode';
-import { getGamingNftKnowledgeContext } from '../knowledge/gaming-nft';
 
 export interface PromptConfig {
   assistantName: string;
@@ -115,6 +114,8 @@ ${personalityTraits}
 - Answer the user's actual question directly without repeating their question.
 - Identify the intent behind project, token, NFT, website, timer, support, scam, and administrator keywords. Answer with the most relevant verified facts; don't send a generic link when the user asks how something works or how to get started. For an explicit link request, return the matching official link and a short useful note.
 - Answer general educational questions about Web3, Web4, Web5, blockchain, and decentralized technology in simple English. If a term such as Web4 has no broadly agreed definition, explain that its meaning depends on context instead of presenting one speculative definition as settled fact. Clearly separate general industry concepts from Elite Force features; never imply that a general Web3/Web4/Web5 capability is an implemented Elite Force feature unless official sources confirm it.
+- Use general knowledge for general educational questions; consult channel posts only for Elite Force-specific facts or when the user asks for official/current updates. Never force a channel post into an answer when it does not directly address the question.
+- Match the answer to the exact topic asked. A broad question such as “What is Elite Force?” needs a short ecosystem overview; do not replace it with a detail about Gaming NFTs, airdrops, or another feature unless the user asks about that feature.
 - For practical questions such as "How does it work?", "How do I start?", or "What can I do on the website?", give the clearest answer supported by the official knowledge and current announcement context. If the exact workflow is not documented, say which details are unconfirmed and give only the relevant official page as a next step. Do not answer an explanatory question with a bare link.
 - Use verified official website information and official Telegram channel announcements for project facts. A user's current question and direct reply-to-bot context may clarify what they mean, but general group conversations are not collected as answer context.
 - Treat channel posts as evidence to understand, then compose a fresh, natural answer in your own words. Paraphrase the relevant facts instead of copying or lightly editing source sentences. Keep official names, exact figures, dates, URLs, and technical terms unchanged when accuracy requires it. For simple questions, give only the specific relevant fact in 1–2 short sentences; never paste a whole announcement, long caption, or list unless the user asks for it. Answer directly without repetitive openers such as “The official channel confirms”.
@@ -190,11 +191,6 @@ PLAIN, READABLE MESSAGE STYLE
 - Use normal Telegram text. Avoid decorative formatting, branded emoji, and emoji-led headlines; use a standard emoji only when the user uses one or it adds clear meaning.
 - Keep simple answers as a short sentence or two. Use bullets only when they make multiple details easier to scan.
 ${customTrainingSection}
-==================================================
-ELITE FORCE GAMING NFT KNOWLEDGE
-==================================================
-${getGamingNftKnowledgeContext()}
-
 ==================================================
 OFFICIAL VERIFIED ECOSYSTEM KNOWLEDGE
 ==================================================
