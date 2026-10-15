@@ -24,6 +24,7 @@ import { logger } from '../utils/logger';
 import {
   getRelevantOfficialChannelContext,
   getLaunchAnnouncementForQuestion,
+  ensureOfficialChannelHistorySynced,
   observeOfficialChannelPost,
 } from '../ai/officialChannelKnowledge';
 import { checkMessageLanguage } from '../utils/languageDetector';
@@ -42,7 +43,7 @@ import {
 
 
 const OFFICIAL_CHANNEL_ID = '@EliteForce_Official';
-const OFFICIAL_COMMUNITY_GROUP_ID = '@Elite_Force_Official';
+const OFFICIAL_COMMUNITY_GROUP_ID = '@EliteForceCommunity';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 const OWNER_QUERY = /\b(?:who(?:\s+is)?\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?|name\s+of\s+(?:the\s+)?|(?:the\s+)?)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
 
@@ -136,7 +137,7 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
     `Ask me about Elite Force, E-FORCE, and official updates.`,
     `No sign-up is needed; chat history is not saved.`,
     '',
-    `🌐 [Website](https://elite-force.space) • ⏱️ [Timer](https://timer.elite-force.space) • 📢 [Telegram Group](https://t.me/Elite_Force_Official)`,
+    `🌐 [Website](https://elite-force.space) • ⏱️ [Timer](https://timer.elite-force.space) • 📢 [Telegram Group](https://t.me/EliteForceCommunity)`,
   ].join('\n');
 
   await safeReply(ctx, message);
@@ -199,7 +200,7 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     `You can chat directly or send photos/screenshots with questions! I will analyze them and reply in clear English.`,
     '',
     `*Official Channels:*`,
-    `📢 [Telegram Group](https://t.me/Elite_Force_Official) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
+    `📢 [Telegram Group](https://t.me/EliteForceCommunity) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Important Rules:*`,
     `• E-FORCE launch and listing dates are in development and will only be shared via official channels.`,
@@ -226,7 +227,7 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
     `*Status:* In active development`,
     '',
     `*Official Verified Channels:*`,
-    `📢 [Telegram Group](https://t.me/Elite_Force_Official) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
+    `📢 [Telegram Group](https://t.me/EliteForceCommunity) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Privacy & Security:*`,
     `• No sign-up, email, or phone number is needed to use the bot.`,
@@ -272,6 +273,8 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     await safeReply(ctx, await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, query)));
     return;
   }
+
+  await ensureOfficialChannelHistorySynced();
 
   await sendTypingAction(ctx);
   const startTime = Date.now();
@@ -438,6 +441,8 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
       text: queryToProcess,
     });
   }
+
+  await ensureOfficialChannelHistorySynced();
 
   await sendTypingAction(ctx);
   const startTime = Date.now();
@@ -704,6 +709,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     // ── Step 2: Vision Analysis ─────────────────────────────────────────────
+    if (caption) await ensureOfficialChannelHistorySynced();
     const contextInfo = caption
       ? [getRelevantOfficialChannelContext(caption), getGamingNftContextForQuestion(caption)].filter(Boolean).join('\n\n') || undefined
       : undefined;
@@ -805,7 +811,7 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
       `• Use \`/ask <question>\` or \`/help\``,
       '',
       `*Official Channels:*`,
-      `📢 *Telegram Group:* https://t.me/Elite_Force_Official`,
+      `📢 *Telegram Group:* https://t.me/EliteForceCommunity`,
       `📢 *Announcement Channel:* https://t.me/EliteForce_Official`,
       `🐦 *Official X:* https://x.com/EliteForceOFC`,
       '',

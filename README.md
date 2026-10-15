@@ -155,7 +155,7 @@ npm test
 
 > **Direct Messaging:** Users can chat naturally without registration or commands. Each message is handled on its own; the bot does not retain chat history or regular users' raw Telegram IDs. Telegram still provides sender information to bots, and message text is sent to the configured AI provider to generate a response.
 
-> **Group Chats:** The bot responds to questions that reach it through the configured group triggers, but does not collect general group discussion as knowledge or answer context. For Elite Force project facts, it uses the official website snapshot and text/captions from the `@EliteForce_Official` announcement channel. Community members can join `@Elite_Force_Official`.
+> **Group Chats:** The bot responds to questions that reach it through the configured group triggers, but does not collect general group discussion as knowledge or answer context. For Elite Force project facts, it uses the official website snapshot and text/captions from the `@EliteForce_Official` announcement channel. Community members can join `@EliteForceCommunity`.
 
 > **Anonymous Admin Use:** The bot requests anonymous administrator status by default for groups and channels. A chat admin must enable it when adding the bot; for an existing chat, update the bot's administrator rights in that chat's settings. Anonymous sender-chat messages are handled without identifying the hidden admin. Regular members' own messages remain visible according to Telegram's rules.
 
@@ -230,7 +230,7 @@ The bot features a zero-maintenance, automated Markdown knowledge synchronizatio
 * **Official Sources**:
   * Official Web Portals: `https://elite-force.space` and `https://timer.elite-force.space`
   * Official Telegram Channel Feed: `@EliteForce_Official`
-  * Official Telegram Community Group: `@Elite_Force_Official`
+  * Official Telegram Community Group: `@EliteForceCommunity`
   * On-Chain Specifications: BNB Smart Chain BEP-20 native token parameters
 * **Enterprise Safeguards**:
   * **SSRF Prevention**: Strict domain whitelisting and blocking of private/loopback/internal IPs.

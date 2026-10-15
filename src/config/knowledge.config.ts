@@ -20,7 +20,7 @@ export const ELITE_FORCE_KNOWLEDGE = {
 
   officialChannels: {
     telegramChannel: 'https://t.me/EliteForce_Official',
-    telegramGroup: 'https://t.me/Elite_Force_Official',
+    telegramGroup: 'https://t.me/EliteForceCommunity',
     telegramHandle: '@EliteForce_Official',
     xProfile: 'https://x.com/EliteForceOFC',
     xHandle: '@EliteForceOFC',
@@ -52,7 +52,7 @@ export const ELITE_FORCE_KNOWLEDGE = {
   officialGuidelines: [
     'Always verify announcements and links through official pinned channels and verified moderators.',
     'Official Telegram Channel: https://t.me/EliteForce_Official',
-    'Official Telegram Group: https://t.me/Elite_Force_Official',
+    'Official Telegram Group: https://t.me/EliteForceCommunity',
     'Official X (Twitter): https://x.com/EliteForceOFC',
     'Admins and official team members will NEVER message you first asking for funds, private keys, passwords, or seed phrases.',
     'Beware of copycat accounts, fake bots, and unverified third-party groups.',

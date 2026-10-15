@@ -37,7 +37,7 @@ Elite Force is an innovative decentralized digital ecosystem and community desig
 
 ## 3. Official Channels & Verified System Links
 - **Official Telegram Channel:** https://t.me/EliteForce_Official (@EliteForce_Official)
-- **Official Telegram Community Group:** https://t.me/Elite_Force_Official (@Elite_Force_Official)
+- **Official Telegram Community Group:** https://t.me/EliteForceCommunity (@EliteForceCommunity)
 - **Official X (Twitter):** https://x.com/EliteForceOFC (@EliteForceOFC)
 - **Official Portal:** https://elite-force.space
 - **Official System Timer:** https://timer.elite-force.space
@@ -57,7 +57,7 @@ _Strict Rule: Owner ID and numeric Telegram IDs remain private and confidential.
 ## 5. Security & Anti-Scam Rules
 - Always verify announcements and links through official pinned channels and verified moderators.
 - Official Telegram Channel: https://t.me/EliteForce_Official
-- Official Telegram Group: https://t.me/Elite_Force_Official
+- Official Telegram Group: https://t.me/EliteForceCommunity
 - Official X (Twitter): https://x.com/EliteForceOFC
 - Admins and official team members will NEVER message you first asking for funds, private keys, passwords, or seed phrases.
 - Beware of copycat accounts, fake bots, and unverified third-party groups.

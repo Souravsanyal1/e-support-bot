@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { env } from '../config/env.config';
 import { logger } from '../utils/logger';
 import { ELITE_FORCE_KNOWLEDGE, SAFETY_BOUNDARIES } from '../config/knowledge.config';
+import { ensureOfficialChannelHistorySynced } from '../ai/officialChannelKnowledge';
 
 /**
  * Allowed domain hostnames for knowledge scraping.
@@ -409,7 +410,8 @@ class KnowledgeSyncService {
       });
     }
 
-    // 3. Collect Official Telegram Channel Posts
+    // 3. Backfill recent official channel history, then read the local archive.
+    await ensureOfficialChannelHistorySynced();
     const channelPosts = loadOfficialChannelStore();
     sourceResults.push({
       source: '@EliteForce_Official',

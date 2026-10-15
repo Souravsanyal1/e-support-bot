@@ -78,6 +78,39 @@ async function runTests() {
   // Official channel answers search only the latest 100 posts received by the bot.
   console.log('Testing official channel post selection...');
   const officialPosts = await import('../src/ai/officialChannelKnowledge');
+  const previewPosts = officialPosts.parseOfficialChannelPreviewPage(`
+    <div class="tgme_widget_message_wrap js-widget_message_wrap">
+      <div class="tgme_widget_message" data-post="EliteForce_Official/201">
+        <div class="tgme_widget_message_text js-message_text" dir="auto">Our system was built in Bangladesh &amp; maintained by our local team.</div>
+        <time datetime="2026-10-10T00:00:00+00:00"></time>
+      </div>
+    </div>
+    <div class="tgme_widget_message_wrap js-widget_message_wrap">
+      <div class="tgme_widget_message" data-post="EliteForce_Official/202">
+        <div class="tgme_widget_message_photo">image bytes are ignored</div>
+        <time datetime="2026-10-11T00:00:00+00:00"></time>
+      </div>
+    </div>
+    <div class="tgme_widget_message_wrap js-widget_message_wrap">
+      <div class="tgme_widget_message" data-post="EliteForce_Official/203">
+        <div class="tgme_widget_message_text js-message_text" dir="auto">A separate airdrop update is coming soon.</div>
+        <time datetime="2026-10-12T00:00:00+00:00"></time>
+      </div>
+    </div>`);
+  assert.strictEqual(previewPosts.length, 3, 'Public channel history parser should retain text and media-only post slots');
+  assert.strictEqual(previewPosts[0].text, 'Our system was built in Bangladesh & maintained by our local team.', 'Channel preview text should decode HTML and preserve captions');
+  assert.strictEqual(previewPosts[1].text, '', 'Channel preview parser must ignore image payloads');
+  assert.strictEqual(
+    officialPosts.selectRelevantOfficialPosts('Which country was the system built in?', previewPosts)[0]?.messageId,
+    201,
+    'Country-of-origin wording should match the official post that names the location'
+  );
+  const unmatchedChannelContext = officialPosts.getRelevantOfficialChannelContext(
+    'What is the maximum token supply?',
+    [{ messageId: 204, postedAt: 1791849600, text: 'Community call starts at 8 PM tonight.' }]
+  );
+  assert.match(unmatchedChannelContext, /no relevant text or caption matched/i,
+    'When a channel scan finds no relevant post, context must say so instead of passing an unrelated latest post');
   assert.strictEqual(officialPosts.isOfficialChannelUsername('EliteForce_Official'), true);
   assert.strictEqual(officialPosts.isOfficialChannelUsername('Elite_Force_Official'), false,
     'The community group must not be treated as the announcement channel');
@@ -125,8 +158,8 @@ async function runTests() {
     'When multiple strongly relevant posts match, return the newest one first'
   );
   const alwaysCheckedContext = officialPosts.getRelevantOfficialChannelContext('Tell me a joke', postFixture);
-  assert(alwaysCheckedContext?.includes('LATEST OFFICIAL TELEGRAM POST'), 'Every question should also be checked against the newest official update when no direct match exists');
-  assert(alwaysCheckedContext?.includes('Latest airdrop announcement'), 'Latest official update should be supplied as optional context');
+  assert(alwaysCheckedContext?.includes('no relevant text or caption matched'), 'No-match channel searches should tell the model no relevant official post was found');
+  assert(!alwaysCheckedContext?.includes('Latest airdrop announcement'), 'Unrelated latest updates must not be supplied as answer context');
   console.log('✓ Official channel post selection passed');
 
   const { getEmergencyKnowledgeResponse, getPrimaryProvider } = await import('../src/ai/gemini');
@@ -1269,9 +1302,9 @@ async function runTests() {
   assert.strictEqual(isOwnerIdentityQuery('Who is the owner?'), true, 'Owner identity requests must be blocked');
   assert.strictEqual(isOwnerIdentityQuery('Who are the official admins?'), false, 'Public admin-list requests must remain answerable');
   const groupAdminCtx = { chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' } } as unknown as Context;
-  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the admins?'), '@Elite_Force_Official', 'General admin questions must inspect the official community group');
+  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the admins?'), '@EliteForceCommunity', 'General admin questions must inspect the official community group');
   assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the channel admins?'), '@EliteForce_Official', 'Explicit channel-admin questions must inspect the official announcement channel');
-  assert.strictEqual(getAdminLookupTarget({ chat: { id: 500, type: 'private' } } as unknown as Context, 'who are admins?'), '@Elite_Force_Official', 'Private general admin questions must use the official community group list');
+  assert.strictEqual(getAdminLookupTarget({ chat: { id: 500, type: 'private' } } as unknown as Context, 'who are admins?'), '@EliteForceCommunity', 'Private general admin questions must use the official community group list');
 
   const mockChannelAdminCtx = {
     api: {
@@ -1290,7 +1323,7 @@ async function runTests() {
   const publicAdminCtx = {
     api: {
       getChatAdministrators: async (chatId: string) => {
-        assert.strictEqual(chatId, '@Elite_Force_Official', 'General admin lookup must query the official community group');
+        assert.strictEqual(chatId, '@EliteForceCommunity', 'General admin lookup must query the official community group');
         return [
         { status: 'creator', user: { id: 7654321, is_bot: false, first_name: 'Public Owner', username: 'public_owner' } },
         { status: 'administrator', user: { id: 7654322, is_bot: false, first_name: 'Support', username: 'EliteForceSupportTeam' } },
@@ -1307,7 +1340,7 @@ async function runTests() {
     chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' },
     api: {
       getChatAdministrators: async (chatId: string | number) => {
-        assert.strictEqual(chatId, '@Elite_Force_Official', 'General admin lookup must target the configured official group');
+        assert.strictEqual(chatId, '@EliteForceCommunity', 'General admin lookup must target the configured official group');
         return [
           { status: 'creator', user: { id: 7654324, is_bot: false, first_name: 'Owner', username: 'private_owner' } },
           { status: 'administrator', user: { id: 7654325, is_bot: false, first_name: 'Group Admin', username: 'group_mod' } },
