@@ -26,7 +26,7 @@ export function getEmergencyKnowledgeResponse(
 
   // If both AI providers are unavailable, still use retrieved channel evidence
   // as readable source text instead of exposing the internal JSON wrapper.
-  const officialPostFallback = getOfficialPostFallback(officialChannelContext);
+  const officialPostFallback = getOfficialPostFallback(officialChannelContext, query);
 
   if (isGamingNftQuestion(query)) {
     // A matched official post is the freshest evidence. Use it before static
@@ -169,23 +169,39 @@ export function getEmergencyKnowledgeResponse(
   );
 }
 
-function getOfficialPostFallback(context?: string | null): string | null {
+function getOfficialPostFallback(context?: string | null, question = ''): string | null {
   if (!context?.includes('RELEVANT OFFICIAL TELEGRAM SOURCE POSTS')) return null;
   const jsonStart = context.indexOf('[{');
   if (jsonStart < 0) return null;
   try {
     const entries: unknown = JSON.parse(context.slice(jsonStart));
     if (!Array.isArray(entries)) return null;
+    const queryTerms = new Set((question.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+      .filter((term) => term.length > 2 && !['the', 'and', 'for', 'from', 'what', 'when', 'how', 'are', 'will', 'can'].includes(term)));
     const posts = entries
       .filter((entry): entry is { postedAt?: string; text: string } =>
         Boolean(entry) && typeof entry === 'object' && typeof (entry as { text?: unknown }).text === 'string'
       )
-      .map((entry) => entry.text.trim())
+      .map((entry) => {
+        const sentences = entry.text.split(/(?<=[.!?])\s+|\n+/).map((sentence) => sentence.trim()).filter(Boolean);
+        const scored = sentences.map((sentence, index) => ({
+          sentence,
+          index,
+          score: Array.from(queryTerms).filter((term) => new RegExp(`\\b${term.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}\\b`, 'i').test(sentence)).length,
+        }));
+        const selected = scored.filter((item) => item.score > 0)
+          .sort((a, b) => b.score - a.score || a.index - b.index)
+          .slice(0, 2)
+          .sort((a, b) => a.index - b.index)
+          .map((item) => item.sentence);
+        const concise = (selected.length ? selected.join(' ') : sentences.slice(0, 2).join(' ')).replace(/\s+/g, ' ').trim();
+        return concise.length > 320 ? `${concise.slice(0, 317).trimEnd()}…` : concise;
+      })
       .filter(Boolean);
     if (!posts.length) return null;
     return posts.length === 1
-      ? `The official channel post says: “${posts[0]}”`
-      : `The relevant official channel posts say:\n${posts.map((post) => `• ${post}`).join('\n')}`;
+      ? `The official channel confirms: ${posts[0]}`
+      : `The official channel confirms: ${posts.slice(0, 2).join(' ')}`;
   } catch {
     return null;
   }

@@ -183,6 +183,13 @@ async function runTests() {
   );
   assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
   assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
+  const concisePostFallback = getOfficialPostFallbackResponse(
+    'When can I claim?',
+    null,
+    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n' + JSON.stringify([{ source: '@EliteForce_Official', postedAt: '2026-01-01T00:00:00.000Z', text: 'Our community keeps growing every day. The claim opens after the official snapshot. Follow our social pages, read our whitepaper, and join every event for exciting updates.' }])
+  );
+  assert(concisePostFallback.includes('claim opens after the official snapshot'), 'Fallback should extract the sentence that answers the question');
+  assert(!concisePostFallback.includes('community keeps growing') && concisePostFallback.length < 180, 'Channel fallback should summarize relevant text instead of dumping the long post');
   const unrelatedFallback = getOfficialPostFallbackResponse(
     'Tell me a joke',
     null,
