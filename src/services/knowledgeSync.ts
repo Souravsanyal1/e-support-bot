@@ -113,7 +113,7 @@ async function fetchWebPageText(url: string): Promise<string> {
     const response = await fetch(validated.toString(), {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'EliteForceKnowledgeBot/1.0 (+https://t.me/Elite_Force_Official)',
+        'User-Agent': 'EliteForceKnowledgeBot/1.0 (+https://t.me/EliteForce_Official)',
         'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
       },
     });
@@ -214,6 +214,7 @@ ${corePillars.map((p) => `- ${p}`).join('\n')}
 - **Network Standard:** ${nativeToken.standard}
 - **Utility:** ${nativeToken.utility}
 - **Current Status:** ${nativeToken.status}
+- **Total/Maximum Supply:** Not officially confirmed; do not guess a number.
 - **Official Launch Date:** ${nativeToken.launchDate}
 - **Listing Date:** ${nativeToken.listingDate}
 - **Contract Address Policy:** Not yet publicly released or deployed. Beware of fake contracts, presales, or unofficial swap pools.
@@ -246,7 +247,7 @@ ${SAFETY_BOUNDARIES.map((s) => `- ${s}`).join('\n')}
 ---
 
 ## 6. Official Announcements & Channel Updates
-Source: @Elite_Force_Official (Public Verified Channel Feed)
+Source: @EliteForce_Official (Public Verified Channel Feed)
 
 ${channelSection}
 
@@ -275,7 +276,7 @@ export function validateKnowledgeContent(content: string): boolean {
     'Elite Force',
     'E-FORCE',
     'BEP-20',
-    'https://t.me/Elite_Force_Official',
+    'https://t.me/EliteForce_Official',
     'https://elite-force.space',
     'Current human administrators',
     'Security & Anti-Scam Rules',
@@ -411,7 +412,7 @@ class KnowledgeSyncService {
     // 3. Collect Official Telegram Channel Posts
     const channelPosts = loadOfficialChannelStore();
     sourceResults.push({
-      source: '@Elite_Force_Official',
+      source: '@EliteForce_Official',
       status: 'synced',
       message: `${channelPosts.length} posts loaded`,
       timestamp: nowIso,

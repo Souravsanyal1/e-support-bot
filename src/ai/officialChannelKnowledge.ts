@@ -11,10 +11,10 @@ export interface OfficialChannelPost {
 }
 
 export type LaunchAnnouncement = OfficialChannelPost & {
-  sourceLabel: '@Elite_Force_Official';
+  sourceLabel: '@EliteForce_Official';
 };
 
-const OFFICIAL_CHANNEL_USERNAME = 'elite_force_official';
+const OFFICIAL_CHANNEL_USERNAME = 'eliteforce_official';
 const STATE_PATH = path.resolve(process.cwd(), '.data/official-channel-posts.json');
 const TRAINING_FILE_PATH = path.resolve(process.cwd(), 'AI_TRAINING_DATA.md');
 const START_MARKER = '<!-- AUTO_SYNC_OFFICIAL_CHANNEL_START -->';
@@ -26,10 +26,14 @@ const MAX_POST_LENGTH = 4096;
 const LAUNCH_TERMS = /\b(?:launch(?:ing)?|go[\s-]?live|listing|listed|presale|pre[\s-]?launch|token launch)\b|লঞ্চ|উদ্বোধন|চালু|লিস্টিং/i;
 const LAUNCH_QUESTION_TERMS = /\b(?:launch|launching|go[\s-]?live|listing|listed|release)\b|\bwhen\b.{0,45}\b(?:token|e[\s-]?force|launch)\b|\b(?:token|e[\s-]?force)\b.{0,45}\b(?:when|date|time)\b|কবে|লঞ্চ|তারিখ|চালু হবে/i;
 
+export function isOfficialChannelUsername(username: string | undefined): boolean {
+  return username?.toLowerCase() === OFFICIAL_CHANNEL_USERNAME;
+}
+
 function isOfficialPost(message: Message): boolean {
   return (
     message.chat.type === 'channel' &&
-    message.chat.username?.toLowerCase() === OFFICIAL_CHANNEL_USERNAME
+    isOfficialChannelUsername(message.chat.username)
   );
 }
 
@@ -108,7 +112,7 @@ function buildTrainingBlock(): string {
     START_MARKER,
     '## Auto-Synced Updates from the Official Telegram Channel',
     '',
-    'Source: @Elite_Force_Official. These are public text and caption updates received by the bot.',
+    'Source: @EliteForce_Official. These are public text and caption updates received by the bot.',
     'This section is refreshed from channel posts only. User messages, group messages, and private chats are never added here.',
     '',
     entries || '_No channel posts have been synchronized yet._',
@@ -168,7 +172,7 @@ function syncPost(message: Message, edited: boolean): void {
 
   persistPosts();
   updateTrainingFile();
-  logger.info('Synchronized a post from @Elite_Force_Official', {
+  logger.info('Synchronized a post from @EliteForce_Official', {
     messageId: message.message_id,
     hasText: Boolean(text),
     savedPostCount: officialPosts.length,
@@ -202,7 +206,7 @@ export function getLaunchAnnouncementForQuestion(
 
   const post = getLatestOfficialPosts().reverse().find((item) => LAUNCH_TERMS.test(item.text));
   if (!post) return null;
-  return { ...post, sourceLabel: '@Elite_Force_Official' };
+  return { ...post, sourceLabel: '@EliteForce_Official' };
 }
 
 const SEARCH_STOP_WORDS = new Set([
@@ -304,7 +308,7 @@ export function getRelevantOfficialChannelContext(
       .filter((post) => post.text.trim())
       .slice(0, 1)
   ).map((post) => ({
-    source: '@Elite_Force_Official',
+    source: '@EliteForce_Official',
     postedAt: new Date(post.postedAt * 1000).toISOString(),
     text: post.text,
   }));

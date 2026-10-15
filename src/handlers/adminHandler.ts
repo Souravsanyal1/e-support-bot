@@ -237,7 +237,7 @@ export async function handleAdminStatus(ctx: Context): Promise<void> {
     `• *RSS:* ${toMB(mem.rss)} MB`,
     '',
     `• *User conversation history:* Disabled`,
-    `• *Training source:* @Elite_Force_Official only`,
+    `• *Training source:* @EliteForce_Official announcement channel only`,
     `• *Authorized Admins:* ${subAdminManager.getAllAdminIds().size} (${env.adminUserIds.size} Primary, ${subAdminManager.listSubAdmins().length} Sub)`,
     `• *Rate Limit Window:* ${env.rateLimitMaxMessages} msgs / ${env.rateLimitWindowSeconds}s`,
   ].join('\n');
@@ -320,7 +320,7 @@ export async function handleAdminUsers(ctx: Context): Promise<void> {
     `• User messages are not saved as training data.`,
     `• Chat history and regular users' raw Telegram IDs are not stored.`,
     `• Configured admin IDs remain in private server settings for access control.`,
-    `• Only public posts from @Elite_Force_Official update the knowledge file.`,
+      `• Only public posts from @EliteForce_Official update the knowledge file.`,
     `• Message text is sent to the configured AI provider for the current reply only.`,
     '',
     `_A one-way, process-only anti-spam key is kept in memory briefly and cleared after its rate-limit window expires._`,

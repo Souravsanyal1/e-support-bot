@@ -28,6 +28,7 @@ Elite Force is an innovative decentralized digital ecosystem and community desig
 - **Network Standard:** BEP-20 (BNB Smart Chain)
 - **Utility:** Native utility and governance asset for the decentralized Elite Force ecosystem.
 - **Current Status:** In active development (Pre-launch).
+- **Total/Maximum Supply:** Not officially confirmed; do not guess a number.
 - **Official Launch Date:** Not yet officially announced. Will be revealed exclusively on official channels.
 - **Listing Date:** Not yet officially confirmed. Will be announced exclusively on official channels.
 - **Contract Address Policy:** Not yet publicly released or deployed. Beware of fake contracts, presales, or unofficial swap pools.
@@ -35,7 +36,8 @@ Elite Force is an innovative decentralized digital ecosystem and community desig
 ---
 
 ## 3. Official Channels & Verified System Links
-- **Official Telegram Channel:** https://t.me/Elite_Force_Official (@Elite_Force_Official)
+- **Official Telegram Channel:** https://t.me/EliteForce_Official (@EliteForce_Official)
+- **Official Telegram Community Group:** https://t.me/Elite_Force_Official (@Elite_Force_Official)
 - **Official X (Twitter):** https://x.com/EliteForceOFC (@EliteForceOFC)
 - **Official Portal:** https://elite-force.space
 - **Official System Timer:** https://timer.elite-force.space
@@ -54,7 +56,8 @@ _Strict Rule: Owner ID and numeric Telegram IDs remain private and confidential.
 
 ## 5. Security & Anti-Scam Rules
 - Always verify announcements and links through official pinned channels and verified moderators.
-- Official Telegram Channel: https://t.me/Elite_Force_Official
+- Official Telegram Channel: https://t.me/EliteForce_Official
+- Official Telegram Group: https://t.me/Elite_Force_Official
 - Official X (Twitter): https://x.com/EliteForceOFC
 - Admins and official team members will NEVER message you first asking for funds, private keys, passwords, or seed phrases.
 - Beware of copycat accounts, fake bots, and unverified third-party groups.
@@ -66,7 +69,7 @@ _Strict Rule: Owner ID and numeric Telegram IDs remain private and confidential.
 ---
 
 ## 6. Official Announcements & Channel Updates
-Source: @Elite_Force_Official (Public Verified Channel Feed)
+Source: @EliteForce_Official (Public Verified Channel Feed)
 
 _No announcements synchronized yet. All updates will appear here when verified._
 

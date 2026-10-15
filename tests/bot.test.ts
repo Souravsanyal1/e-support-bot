@@ -45,13 +45,13 @@ async function runTests() {
     assert(context.includes('launch or mint dates'));
     assert(context.includes('rewards'));
     assert(context.includes('seed phrase or private key'));
-    assert(context.includes('https://t.me/Elite_Force_Official'));
+    assert(context.includes('https://t.me/EliteForce_Official'));
     assert(context.includes('may represent a digital collectible'), 'General Gaming NFT explanation should be available');
     assert(!context.includes('guaranteed profit'), 'Must not promise NFT returns');
 
     const registryFeature = {
       featureName: 'Gaming NFT collection', description: 'Officially launched collection.', status: 'live',
-      officialAnnouncementReference: 'https://t.me/Elite_Force_Official/123', nftSupply: 500,
+      officialAnnouncementReference: 'https://t.me/EliteForce_Official/123', nftSupply: 500,
       mintingOrClaimEligibility: 'Eligible community members', utilityAndBenefits: 'In-game access',
       lastUpdated: '2026-10-15T00:00:00.000Z', statusUpdateAuthorized: true,
     };
@@ -75,6 +75,9 @@ async function runTests() {
   // Official channel answers search only the latest 100 posts received by the bot.
   console.log('Testing official channel post selection...');
   const officialPosts = await import('../src/ai/officialChannelKnowledge');
+  assert.strictEqual(officialPosts.isOfficialChannelUsername('EliteForce_Official'), true);
+  assert.strictEqual(officialPosts.isOfficialChannelUsername('Elite_Force_Official'), false,
+    'The community group must not be treated as the announcement channel');
   assert.strictEqual(
     officialPosts.extractOfficialPostText({ caption: 'Launch details are in this caption.' }),
     'Launch details are in this caption.',
@@ -127,7 +130,7 @@ async function runTests() {
   const readableFallback = getOfficialPostFallbackResponse(
     'When can I claim?',
     null,
-    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@Elite_Force_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Claim opens after the official snapshot."}]'
+    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@EliteForce_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Claim opens after the official snapshot."}]'
   );
   assert(readableFallback.includes('Claim opens after the official snapshot.'), 'Provider fallback should preserve relevant official post text');
   assert(!readableFallback.includes('postedAt') && !readableFallback.includes('{"source"'), 'Provider fallback must not expose internal context JSON');
@@ -140,7 +143,7 @@ async function runTests() {
   const nftPostFallback = getOfficialPostFallbackResponse(
     'Give me Gaming NFT info',
     null,
-    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@Elite_Force_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Gaming NFT holders can access the new arena after launch."}]'
+    'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n[{"source":"@EliteForce_Official","postedAt":"2026-01-01T00:00:00.000Z","text":"Gaming NFT holders can access the new arena after launch."}]'
   );
   assert(nftPostFallback.includes('Gaming NFT holders can access the new arena'), 'NFT fallback should answer from a matched official post before sending users to a channel link');
   console.log('✓ Official source context fallback passed');
@@ -177,7 +180,7 @@ async function runTests() {
   assert(prompt.includes("Elite Force's AI support assistant"), 'Prompt must identify the assistant transparently');
   assert(prompt.includes('ENGLISH ONLY'), 'Prompt must enforce English-only response rule');
   assert(prompt.includes('E-FORCE'), 'Prompt must include E-FORCE token details');
-  assert(prompt.includes('https://t.me/Elite_Force_Official'), 'Prompt must include official Telegram channel');
+  assert(prompt.includes('https://t.me/EliteForce_Official'), 'Prompt must include official Telegram channel');
   assert(prompt.includes('https://x.com/EliteForceOFC'), 'Prompt must include official X profile');
   assert(prompt.includes('DO NOT INVENT LAUNCH OR LISTING DATES'), 'Prompt must prohibit inventing dates');
   assert(prompt.includes('STRICT PRIVACY & INFRASTRUCTURE CONFIDENTIALITY'), 'Prompt must enforce server privacy');
@@ -1267,6 +1270,7 @@ async function runTests() {
   assert(currentPrompt.includes('simple questions usually need 1–2 short sentences'), 'Reply length should adapt to question complexity');
   assert(currentPrompt.includes('Use contractions and everyday wording'), 'Prompt should encourage natural conversational English');
   assert(currentPrompt.includes('configured moderation policy'), 'Prompt should defer profanity handling to configured moderation');
+  assert(currentPrompt.includes('general group conversations are not collected as answer context'), 'Prompt should not use general group conversation as answer context');
   assert(!currentPrompt.includes('Messages with bad words are automatically removed/deleted'), 'Prompt must not contradict configurable profanity moderation');
 
   const { generateSupportResponse, getEmergencyKnowledgeResponse } = await import('../src/ai/gemini');
@@ -1283,8 +1287,11 @@ async function runTests() {
   const nftInfoResponse = getEmergencyKnowledgeResponse('Give me Gaming NFT info');
   assert(nftInfoResponse.includes('blockchain-based digital item'), 'NFT info request should receive a direct explanation');
   assert(!nftInfoResponse.includes('https://'), 'General NFT information should not be replaced by a channel link');
+  const tokenSupplyResponse = getEmergencyKnowledgeResponse('How many tokens will be launched in total? What is the max supply of tokens?');
+  assert(tokenSupplyResponse.includes("haven't been officially confirmed"), 'Token supply questions must say the supply is unconfirmed');
+  assert(!tokenSupplyResponse.includes('contract address'), 'Token supply questions must not get an unrelated contract answer');
   const nftLinkResponse = getEmergencyKnowledgeResponse('Where is the official Gaming NFT claim link?');
-  assert(nftLinkResponse.includes('https://t.me/Elite_Force_Official'), 'NFT link fallback should direct users to the official channel');
+  assert(nftLinkResponse.includes('https://t.me/EliteForce_Official'), 'NFT link fallback should direct users to the official channel');
   assert(nftLinkResponse.includes('seed phrase'), 'NFT claim fallback should retain wallet safety guidance');
   const launchUnknownResponse = getEmergencyKnowledgeResponse('When will E-FORCE launch?');
   assert(launchUnknownResponse.includes("don't have a verified announcement"), 'Unknown launch information should not be guessed');

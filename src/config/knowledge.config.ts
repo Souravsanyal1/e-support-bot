@@ -19,9 +19,9 @@ export const ELITE_FORCE_KNOWLEDGE = {
     'members through blockchain utility, Web3 innovations, and community-driven growth.',
 
   officialChannels: {
-    telegramChannel: 'https://t.me/Elite_Force_Official',
+    telegramChannel: 'https://t.me/EliteForce_Official',
     telegramGroup: 'https://t.me/Elite_Force_Official',
-    telegramHandle: '@Elite_Force_Official',
+    telegramHandle: '@EliteForce_Official',
     xProfile: 'https://x.com/EliteForceOFC',
     xHandle: '@EliteForceOFC',
   },
@@ -51,7 +51,8 @@ export const ELITE_FORCE_KNOWLEDGE = {
 
   officialGuidelines: [
     'Always verify announcements and links through official pinned channels and verified moderators.',
-    'Official Telegram Channel: https://t.me/Elite_Force_Official',
+    'Official Telegram Channel: https://t.me/EliteForce_Official',
+    'Official Telegram Group: https://t.me/Elite_Force_Official',
     'Official X (Twitter): https://x.com/EliteForceOFC',
     'Admins and official team members will NEVER message you first asking for funds, private keys, passwords, or seed phrases.',
     'Beware of copycat accounts, fake bots, and unverified third-party groups.',
@@ -59,7 +60,7 @@ export const ELITE_FORCE_KNOWLEDGE = {
 
   unconfirmedTopicsWarning:
     'For launch dates, listing dates, token prices, contract addresses, audits, or reward mechanics, ' +
-    'never present unconfirmed rumors. Direct community members to official announcements on https://t.me/Elite_Force_Official and https://x.com/EliteForceOFC.',
+    'never present unconfirmed rumors. Direct community members to official announcements on https://t.me/EliteForce_Official and https://x.com/EliteForceOFC.',
 } as const;
 
 export const SAFETY_BOUNDARIES = [

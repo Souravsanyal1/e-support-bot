@@ -41,7 +41,7 @@ import {
 
 
 
-const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
+const OFFICIAL_CHANNEL_ID = '@EliteForce_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 const OWNER_QUERY = /\b(?:who(?:'s|\s+is)?(?:\s+the)?|name\s+of|identify|tell\s+me|show\s+me|reveal|give\s+me)\s+(?:the\s+)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)\s+(?:name|identity|id|username)\b|\bowner\s+id\b/i;
 
@@ -118,7 +118,7 @@ export async function handleStartCommand(ctx: Context): Promise<void> {
     `Ask me about Elite Force, E-FORCE, and official updates.`,
     `No sign-up is needed; chat history is not saved.`,
     '',
-    `🌐 [Website](https://elite-force.space) • ⏱️ [Timer](https://timer.elite-force.space) • 📢 [Telegram](https://t.me/Elite_Force_Official)`,
+    `🌐 [Website](https://elite-force.space) • ⏱️ [Timer](https://timer.elite-force.space) • 📢 [Telegram Group](https://t.me/Elite_Force_Official)`,
   ].join('\n');
 
   await safeReply(ctx, message);
@@ -181,7 +181,7 @@ export async function handleHelpCommand(ctx: Context): Promise<void> {
     `You can chat directly or send photos/screenshots with questions! I will analyze them and reply in clear English.`,
     '',
     `*Official Channels:*`,
-    `📢 [Telegram](https://t.me/Elite_Force_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
+    `📢 [Telegram Group](https://t.me/Elite_Force_Official) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Important Rules:*`,
     `• E-FORCE launch and listing dates are in development and will only be shared via official channels.`,
@@ -208,7 +208,7 @@ export async function handleAboutCommand(ctx: Context): Promise<void> {
     `*Status:* In active development`,
     '',
     `*Official Verified Channels:*`,
-    `📢 [Telegram](https://t.me/Elite_Force_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
+    `📢 [Telegram Group](https://t.me/Elite_Force_Official) • [Announcement Channel](https://t.me/EliteForce_Official) • 🐦 [X (Twitter)](https://x.com/EliteForceOFC)`,
     '',
     `*Privacy & Security:*`,
     `• No sign-up, email, or phone number is needed to use the bot.`,
@@ -380,7 +380,6 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
     .trim();
 
   const queryToProcess = cleanedText || text;
-
   if (isOwnerIdentityQuery(queryToProcess)) {
     await safeReply(ctx, OWNER_PRIVACY_RESPONSE, { replyToMessage: true });
     return;
@@ -788,7 +787,8 @@ export async function handleNewChatMembers(ctx: Context): Promise<void> {
       `• Use \`/ask <question>\` or \`/help\``,
       '',
       `*Official Channels:*`,
-      `📢 *Telegram:* https://t.me/Elite_Force_Official`,
+      `📢 *Telegram Group:* https://t.me/Elite_Force_Official`,
+      `📢 *Announcement Channel:* https://t.me/EliteForce_Official`,
       `🐦 *Official X:* https://x.com/EliteForceOFC`,
       '',
       `🛡️ *Safety Reminder:* Official admins will *never* DM you first or ask for private keys/seed phrases.`,

@@ -72,6 +72,10 @@ export function getEmergencyKnowledgeResponse(
     return `The official Elite Force website is ${ELITE_FORCE_KNOWLEDGE.officialSystemLinks.website}.`;
   }
 
+  if (/\b(?:max(?:imum)?\s+supply|total\s+supply|token\s+supply|total\s+tokens?|how\s+many\s+tokens?|tokenomics)\b/i.test(query)) {
+    return "E-FORCE's total and maximum token supply haven't been officially confirmed in the verified information I have, so I can't give you a reliable number.";
+  }
+
   if (
     launchAnnouncement &&
     /\b(?:launch|launching|listing|date|when)\b|কবে|লঞ্চ|তারিখ/i.test(query)

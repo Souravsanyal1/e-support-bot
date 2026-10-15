@@ -42,7 +42,7 @@ function isOfficialReference(reference: string | null): boolean {
   try {
     const url = new URL(reference);
     return url.protocol === 'https:' && (
-      (url.hostname === 't.me' && url.pathname.toLowerCase().startsWith('/elite_force_official')) ||
+      (url.hostname === 't.me' && url.pathname.toLowerCase().startsWith('/eliteforce_official')) ||
       (url.hostname === 'x.com' && url.pathname.toLowerCase().startsWith('/eliteforceofc')) ||
       (url.hostname === 'elite-force.space' || url.hostname.endsWith('.elite-force.space'))
     );
@@ -99,7 +99,7 @@ export function getGamingNftKnowledgeContext(): string {
     'A Gaming NFT may represent a digital collectible, in-game item, membership, access right, achievement, or other blockchain utility depending on a project implementation. This is general background, not a claim that Elite Force has implemented any such feature.',
     facts.length ? `Officially supported Elite Force Gaming NFT registry facts:\n${facts.join('\n')}` : 'No Elite Force Gaming NFT features or specifics are currently officially confirmed in the editable registry. Do not infer that any feature is planned, implemented, live, free, paid, claimable, or available.',
     'Never invent or infer NFT prices, supply, rarity, launch or mint dates, claim URLs, rewards, staking APR, eligibility, or game utility. Distinguish planned, in_development, confirmed, live, and cancelled exactly; registry presence alone does not mean a feature is live.',
-    'For unconfirmed information, say official details have not yet been confirmed and direct users to https://t.me/Elite_Force_Official and https://x.com/EliteForceOFC.',
+    'For unconfirmed information, say official details have not yet been confirmed and direct users to https://t.me/EliteForce_Official and https://x.com/EliteForceOFC.',
     'Warn users about fake minting websites and fraudulent claim links. Never ask for or accept a wallet seed phrase or private key. Do not promise profit or financial returns from NFTs.',
   ].join('\n');
 }
