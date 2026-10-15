@@ -64,6 +64,8 @@ export interface AppConfig {
   readonly profanityStrictMode: boolean;
   /** If true, repeat offenders are escalated to primary admins. */
   readonly profanityRepeatOffenderEscalation: boolean;
+  /** If true, suspicious unofficial support/contact promotions are deleted in groups. */
+  readonly antiImpersonationAutoDelete: boolean;
 }
 
 /**
@@ -277,6 +279,8 @@ function loadAndValidateConfig(): AppConfig {
     process.env.PROFANITY_STRICT_MODE?.trim().toLowerCase() !== 'false'; // default: true
   const profanityRepeatOffenderEscalation =
     process.env.PROFANITY_REPEAT_OFFENDER_ESCALATION?.trim().toLowerCase() !== 'false'; // default: true
+  const antiImpersonationAutoDelete =
+    process.env.ANTI_IMPERSONATION_AUTO_DELETE?.trim().toLowerCase() !== 'false'; // default: true
 
   return {
     telegramBotToken,
@@ -326,6 +330,7 @@ function loadAndValidateConfig(): AppConfig {
     profanityWarnUser,
     profanityStrictMode,
     profanityRepeatOffenderEscalation,
+    antiImpersonationAutoDelete,
   };
 }
 

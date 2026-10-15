@@ -1,5 +1,5 @@
 import { Context } from 'grammy';
-import { generateSupportResponse } from '../ai/gemini';
+import { generateSupportResponse, getWalletSafetyResponse } from '../ai/gemini';
 import { analyzeImageWithAI } from '../ai/vision';
 import {
   moderateImage,
@@ -59,6 +59,12 @@ function enqueueChatReply(chatId: number, task: () => Promise<void>): Promise<vo
   return tracked;
 }
 
+async function replyInChatOrder(ctx: Context, text: string, replyToMessage = true): Promise<void> {
+  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+    await safeReply(ctx, text, { replyToMessage });
+  });
+}
+
 async function syncChannelHistoryWithoutHoldingReply(): Promise<void> {
   let timeout: NodeJS.Timeout | undefined;
   const deadline = new Promise<void>((resolve) => {
@@ -103,7 +109,7 @@ export function getAdminLookupTarget(_ctx: Context, question: string): string | 
 const OWNER_PRIVACY_RESPONSE = "I can't identify the owner or share the owner's ID. I can list the other publicly listed admins.";
 
 /** Blocks suspicious instructions before any user text reaches an AI provider. */
-async function rejectUnsafePrompt(ctx: Context, text: string): Promise<boolean> {
+async function rejectUnsafePrompt(ctx: Context, text: string, alreadyQueued = false): Promise<boolean> {
   const result = checkPromptSecurity(text);
   if (!result.isThreat) return false;
 
@@ -118,7 +124,8 @@ async function rejectUnsafePrompt(ctx: Context, text: string): Promise<boolean> 
   });
 
   if (ctx.chat?.type === 'private') {
-    await safeReply(ctx, result.safeResponse, { replyToMessage: true });
+    if (alreadyQueued) await safeReply(ctx, result.safeResponse, { replyToMessage: true });
+    else await replyInChatOrder(ctx, result.safeResponse);
   } else {
     try { await ctx.deleteMessage(); } catch { /* bot may not have delete permission */ }
   }
@@ -313,13 +320,22 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
 
   if (await rejectUnsafePrompt(ctx, query)) return;
 
+  const walletSafetyResponse = getWalletSafetyResponse(query);
+  if (walletSafetyResponse) {
+    await replyInChatOrder(ctx, walletSafetyResponse);
+    return;
+  }
+
   if (isOwnerIdentityQuery(query)) {
-    await safeReply(ctx, OWNER_PRIVACY_RESPONSE);
+    await replyInChatOrder(ctx, OWNER_PRIVACY_RESPONSE);
     return;
   }
 
   if (isAdminListQuery(query)) {
-    await safeReply(ctx, await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, query)));
+    await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+      const admins = await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, query));
+      await safeReply(ctx, admins);
+    });
     return;
   }
 
@@ -449,13 +465,22 @@ export async function handleTextMessage(
     .trim();
 
   const queryToProcess = cleanedText || text;
+  const walletSafetyResponse = getWalletSafetyResponse(queryToProcess);
+  if (walletSafetyResponse) {
+    await replyInChatOrder(ctx, walletSafetyResponse);
+    return;
+  }
+
   if (isOwnerIdentityQuery(queryToProcess)) {
-    await safeReply(ctx, OWNER_PRIVACY_RESPONSE, { replyToMessage: true });
+    await replyInChatOrder(ctx, OWNER_PRIVACY_RESPONSE);
     return;
   }
 
   if (isAdminListQuery(queryToProcess)) {
-    await safeReply(ctx, await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, queryToProcess)), { replyToMessage: true });
+    await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+      const admins = await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, queryToProcess));
+      await safeReply(ctx, admins, { replyToMessage: true });
+    });
     return;
   }
 
@@ -510,6 +535,12 @@ export async function handleTextMessage(
  * for valid Elite Force and system/interface images.
  */
 export async function handlePhotoMessage(ctx: Context): Promise<void> {
+  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+    await processPhotoMessage(ctx);
+  });
+}
+
+async function processPhotoMessage(ctx: Context): Promise<void> {
   if (!botStateManager.isUserFacingActive() && !isAdmin(ctx.from?.id)) {
     return;
   }
@@ -577,7 +608,14 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
   const caption = ctx.message?.caption?.trim();
 
-  if (caption && await rejectUnsafePrompt(ctx, caption)) return;
+  if (caption && await rejectUnsafePrompt(ctx, caption, true)) return;
+  if (caption) {
+    const walletSafetyResponse = getWalletSafetyResponse(caption);
+    if (walletSafetyResponse) {
+      await safeReply(ctx, walletSafetyResponse, { replyToMessage: true });
+      return;
+    }
+  }
 
   // If caption has non-English text or bad words, enforce community guidelines
   if (caption) {

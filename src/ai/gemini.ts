@@ -9,6 +9,7 @@ import {
 } from './officialChannelKnowledge';
 import { conversationManager } from './conversation';
 import { isGamingNftQuestion, getConfirmedGamingNftFacts } from '../knowledge/gaming-nft';
+import { detectSuspiciousContactPromotion, OFFICIAL_SAFETY_NOTICE } from '../utils/antiImpersonation';
 
 // Initialize the optional Google Gen AI client if key is present
 const ai = env.geminiApiKey ? new GoogleGenAI({ apiKey: env.geminiApiKey }) : null;
@@ -369,6 +370,34 @@ export function getPrimaryProvider(): 'gemini' | 'openrouter' {
   return env.aiProvider;
 }
 
+/** Deterministic replies for common wallet theft and impersonation scenarios. */
+export function getWalletSafetyResponse(userMessage: string): string | null {
+  const query = userMessage.toLowerCase();
+  const attemptsPrivilegeBypass = /\b(skip|bypass|ignore)\b.{0,50}\b(verification|authorization|security|permissions?)\b/i.test(query)
+    && /\b(admin|administrator)\b.{0,40}\b(access|control|privileges?)\b|\b(access|control|privileges?)\b.{0,40}\b(admin|administrator)\b/i.test(query);
+  if (attemptsPrivilegeBypass) {
+    return "I can’t bypass verification or grant admin access. Group permissions can only be changed by an authorized group admin.";
+  }
+
+  const asksForWalletSecret = /\b(seed\s*phrase|recovery\s+phrase|private\s+key|wallet\s+password|wallet\s+recovery\s+words?)\b/i.test(query)
+    && /\b(share|send|give|enter|type|provide|reveal|submit|need|required|unless|must|should)\b/i.test(query);
+  if (asksForWalletSecret) {
+    return `That’s a scam. Never share your seed phrase, private key, or wallet password—not even with an admin. ${OFFICIAL_SAFETY_NOTICE}`;
+  }
+
+  const asksForPayment = /\b(send|pay|transfer|deposit)\b.{0,100}\b(\d+(?:\.\d+)?\s*)?(usd?t|crypto|money|funds|fee)\b|\b(\d+(?:\.\d+)?\s*)?(usd?t|crypto|money|funds|fee)\b.{0,100}\b(send|pay|transfer|deposit|verify|verification|unlock|claim|account)\b/i.test(query);
+  const paymentForAccess = asksForPayment && /\b(admin|administrator|moderator|support|team|verify|verification|unlock|claim|account|wallet|reward|airdrop)\b/i.test(query);
+  if (paymentForAccess) {
+    return `That’s a scam. Elite Force support won’t ask you to send crypto to verify or unlock an account. Don’t pay or follow their link. ${OFFICIAL_SAFETY_NOTICE}`;
+  }
+
+  if (detectSuspiciousContactPromotion(userMessage)) {
+    return `That looks like an impersonation scam. ${OFFICIAL_SAFETY_NOTICE}`;
+  }
+
+  return null;
+}
+
 /**
  * Generates an AI community support response using the configured primary provider.
  *
@@ -386,6 +415,9 @@ export async function generateSupportResponse(
   if (!sanitizedPrompt) {
     return "Hey! I'm Celia, Elite Force's AI support assistant. What can I help you with?";
   }
+
+  const walletSafetyResponse = getWalletSafetyResponse(sanitizedPrompt);
+  if (walletSafetyResponse) return walletSafetyResponse;
 
   // Load conversation history for private users; groups are stateless for privacy
   const history = userId ? conversationManager.getHistory(userId) : [];

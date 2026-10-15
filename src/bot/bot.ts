@@ -6,6 +6,7 @@ import { rateLimitMiddleware } from '../middleware/rateLimiter';
 import { sanitizeMessageMiddleware } from '../middleware/sanitizer';
 import { languageFilterMiddleware } from '../middleware/languageFilter';
 import { badWordsFilterMiddleware } from '../middleware/badWordsFilter';
+import { antiImpersonationMiddleware } from '../middleware/antiImpersonation';
 import { requireAdmin } from '../middleware/adminAuth';
 import { handleAdminBan, handleAdminLimit } from '../handlers/moderationHandler';
 import {
@@ -78,6 +79,7 @@ export function createBot(): Bot {
   bot.use(groupImageModerationMiddleware); // Instant image removal in groups before any other processing
   bot.use(rateLimitMiddleware);
   bot.use(sanitizeMessageMiddleware);
+  bot.use(antiImpersonationMiddleware);
   bot.use(languageFilterMiddleware);
   bot.use(badWordsFilterMiddleware);
   // Queue valid text updates during /off; command messages still reach handlers

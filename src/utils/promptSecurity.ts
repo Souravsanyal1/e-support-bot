@@ -14,6 +14,10 @@
  */
 const INJECTION_PATTERNS: readonly RegExp[] = [
   // Classic jailbreak openers
+  /\b(ignore|disregard|override|bypass)\s+(all\s+)?(your\s+)?(system|developer)\s+(prompt|instructions?|rules?)\b/i,
+  /\b(developer|official\s+developer)\b.{0,60}\b(approved|authorized|gave\s+permission)\b.{0,80}\b(ignore|reveal|disclose|confidential|secret)\b/i,
+  /\b(you\s+are\s+authorized|you\s+have\s+permission)\b.{0,80}\b(ignore|reveal|disclose|confidential|secret)\b/i,
+  /\b(disclose|reveal|dump|print|send)\b.{0,60}\b(confidential|private|secret|credentials|internal\s+data)\b/i,
   /ignore\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?/i,
   /disregard\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?/i,
   /forget\s+(all\s+)?(previous|prior|above|earlier)\s+instructions?/i,
