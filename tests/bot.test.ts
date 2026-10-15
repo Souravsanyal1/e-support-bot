@@ -1374,7 +1374,8 @@ async function runTests() {
   assert(currentPrompt.includes('DO NOT start regular replies with "I\'m Celia, your System & Group Management Admin."'), 'Must ban generic intro in regular replies');
   assert(currentPrompt.includes('simple questions usually need 1–2 short sentences'), 'Reply length should adapt to question complexity');
   assert(currentPrompt.includes('Use contractions and everyday wording'), 'Prompt should encourage natural conversational English');
-  assert(currentPrompt.includes("Never imitate another bot's persona"), "Prompt must keep the bot's own identity and avoid copying unrelated bot details");
+  assert(currentPrompt.includes('A style example may guide only broad qualities'), 'Prompt may use examples for broad tone only, never their content or concepts');
+  assert(currentPrompt.includes('never copy its text, concepts, persona'), "Prompt must keep the bot's own identity and avoid copying unrelated bot details");
   assert(currentPrompt.includes('Avoid repeating the same identity statement'), 'Prompt must handle follow-ups without repeating full replies');
   assert(currentPrompt.includes('configured moderation policy'), 'Prompt should defer profanity handling to configured moderation');
   assert(currentPrompt.includes('will never initiate a private message'), 'Prompt must warn that official admins never initiate private contact');
