@@ -195,9 +195,21 @@ async function runTests() {
   assert(!alwaysCheckedContext?.includes('Latest airdrop announcement'), 'Unrelated latest updates must not be supplied as answer context');
   console.log('✓ Official channel post selection passed');
 
-  const { getEmergencyKnowledgeResponse, getPrimaryProvider } = await import('../src/ai/gemini');
+  const { getEmergencyKnowledgeResponse, getPrimaryProvider, repeatsOfficialSourceWording } = await import('../src/ai/gemini');
   const { env: runtimeEnv } = await import('../src/config/env.config');
   assert.strictEqual(getPrimaryProvider(), runtimeEnv.aiProvider, 'Text response provider must honor AI_PROVIDER instead of switching by time');
+  const repeatedPost = 'A new force in the Web5 ecosystem, driven by innovation, community, AI, Governance and blockchain technology. Follow for official updates and developments. Thank you to our community for your continued support and trust. Stay tuned for official updates and upcoming announcements.';
+  const repeatedContext = 'RELEVANT OFFICIAL TELEGRAM SOURCE POSTS\n' + JSON.stringify([{ text: repeatedPost }]);
+  assert.strictEqual(
+    repeatsOfficialSourceWording('A new force in the Web5 ecosystem, driven by innovation, community, AI, Governance and blockchain technology.', repeatedContext),
+    true,
+    'Copied channel wording should trigger an AI rewrite'
+  );
+  assert.strictEqual(
+    repeatsOfficialSourceWording('Elite Force shares project news and development progress through its official community announcements.', repeatedContext),
+    false,
+    'A genuinely paraphrased channel-backed answer should pass the wording guard'
+  );
   const getOfficialPostFallbackResponse = getEmergencyKnowledgeResponse;
   const howItWorks = getEmergencyKnowledgeResponse('How does Elite Force work?');
   assert(howItWorks.includes('Web3 ecosystem') && howItWorks.includes('E-FORCE'), 'How-it-works questions should get a direct project explanation');
