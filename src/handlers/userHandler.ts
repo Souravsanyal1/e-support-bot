@@ -60,21 +60,33 @@ export const VERIFIED_OFFICIAL_ADMINS_TEXT = [
 export function isAdminListQuery(text: string): boolean {
   const lower = text.toLowerCase().trim();
   const hasAdmin = ADMIN_LIST_QUERY.test(lower);
-  const hasInquiry = /\b(who|list|names?|new|added|show|tell|channel|group|official)\b/i.test(lower);
-  return hasAdmin && (hasInquiry || lower === 'admin' || lower === 'admins');
+  const hasListIntent = /\b(who|what|list|names?|new|added|show|tell|display|find|contact|channel|group|official|team|mod(?:erator)?s?)\b/i.test(lower);
+  const isShortAdminQuery = lower.replace(/[^a-z]+/g, ' ').trim().split(/\s+/).filter(Boolean).length <= 3;
+  return hasAdmin && (hasListIntent || /[?？]/.test(lower) || isShortAdminQuery);
 }
 
 export function isOwnerIdentityQuery(text: string): boolean {
   return OWNER_QUERY.test(text);
 }
 
+export function getAdminLookupTarget(ctx: Context, question: string): string | number {
+  if (/\bchannel\b/i.test(question)) return OFFICIAL_CHANNEL_ID;
+  if ((ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') && ctx.chat.id) {
+    return ctx.chat.id;
+  }
+  return OFFICIAL_CHANNEL_ID;
+}
+
 const OWNER_PRIVACY_RESPONSE = "I can't share numeric Telegram IDs, including the owner's. I can provide publicly listed admin names and usernames.";
 
-export async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
+export async function getOfficialChannelAdmins(
+  ctx: Context,
+  targetChatId: string | number = OFFICIAL_CHANNEL_ID
+): Promise<string> {
   try {
-    const admins = await ctx.api.getChatAdministrators(OFFICIAL_CHANNEL_ID);
+    const admins = await ctx.api.getChatAdministrators(targetChatId);
     const humanAdmins = admins
-      .filter((admin) => !admin.user.is_bot)
+      .filter((admin) => !admin.user.is_bot && ['creator', 'administrator'].includes(admin.status))
       .map((admin) => {
         const name = [admin.user.first_name, admin.user.last_name].filter(Boolean).join(' ').trim();
         return admin.user.username ? `${name || 'Admin'} (@${admin.user.username})` : name || 'Admin';
@@ -83,16 +95,24 @@ export async function getOfficialChannelAdmins(ctx: Context): Promise<string> {
 
     // Public Telegram display names/usernames are okay; never include numeric IDs.
     if (uniqueAdmins.length > 0) {
+      const scope = targetChatId === OFFICIAL_CHANNEL_ID
+        ? 'the official Elite Force Telegram channel'
+        : (ctx.chat?.title || 'this Telegram group');
       return [
-        'Current human administrators of the official Elite Force Telegram channel (verified live from Telegram):',
+        `Current human administrators of ${scope} (verified live from Telegram):`,
         ...uniqueAdmins.map((name) => `• ${name}`),
         '',
         'This list excludes bots and reflects administrators currently listed by Telegram.',
       ].join('\n');
     }
     return VERIFIED_OFFICIAL_ADMINS_TEXT;
-  } catch {
-    return VERIFIED_OFFICIAL_ADMINS_TEXT;
+  } catch (error) {
+    logger.warn('Could not fetch Telegram admin list', {
+      chatId: targetChatId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    if (targetChatId === OFFICIAL_CHANNEL_ID) return VERIFIED_OFFICIAL_ADMINS_TEXT;
+    return `I can't read the live admin list for ${ctx.chat?.title || 'this Telegram group'} right now. Please check the group's Info page and open Administrators.`;
   }
 }
 
@@ -251,7 +271,7 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
   }
 
   if (isAdminListQuery(query)) {
-    await safeReply(ctx, await getOfficialChannelAdmins(ctx));
+    await safeReply(ctx, await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, query)));
     return;
   }
 
@@ -386,7 +406,7 @@ export async function handleTextMessage(ctx: Context): Promise<void> {
   }
 
   if (isAdminListQuery(queryToProcess)) {
-    await safeReply(ctx, await getOfficialChannelAdmins(ctx), { replyToMessage: true });
+    await safeReply(ctx, await getOfficialChannelAdmins(ctx, getAdminLookupTarget(ctx, queryToProcess)), { replyToMessage: true });
     return;
   }
 

@@ -1252,6 +1252,7 @@ async function runTests() {
   const {
     isAdminListQuery,
     isOwnerIdentityQuery,
+    getAdminLookupTarget,
     getOfficialChannelAdmins,
     VERIFIED_OFFICIAL_ADMINS_TEXT,
     VERIFIED_OFFICIAL_ADMINS,
@@ -1260,9 +1261,16 @@ async function runTests() {
   assert.strictEqual(isAdminListQuery('who are the admins'), true, 'Should detect admin query');
   assert.strictEqual(isAdminListQuery('channel administrators'), true, 'Should detect channel admin query');
   assert.strictEqual(isAdminListQuery('admin'), true, 'Should detect standalone admin query');
+  assert.strictEqual(isAdminListQuery('admins?'), true, 'Should detect punctuation-only admin question');
+  assert.strictEqual(isAdminListQuery('Any admins?'), true, 'Should detect natural admin-list question');
+  assert.strictEqual(isAdminListQuery('show me the admin list'), true, 'Should detect an explicit admin-list request');
   assert.strictEqual(isAdminListQuery('what is elite force'), false, 'Should not match unrelated queries');
   assert.strictEqual(isOwnerIdentityQuery('What is the owner ID?'), true, 'Owner ID requests must be blocked');
   assert.strictEqual(isOwnerIdentityQuery('Who are the official admins?'), false, 'Public admin-list requests must remain answerable');
+  const groupAdminCtx = { chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' } } as unknown as Context;
+  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the admins?'), -100777001, 'Admin questions in groups must inspect that group');
+  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the channel admins?'), '@EliteForce_Official', 'Explicit channel-admin questions must inspect the official announcement channel');
+  assert.strictEqual(getAdminLookupTarget({ chat: { id: 500, type: 'private' } } as unknown as Context, 'who are admins?'), '@EliteForce_Official', 'Private admin questions must use the verified official channel list');
 
   const mockChannelAdminCtx = {
     api: {
@@ -1280,17 +1288,36 @@ async function runTests() {
   assert(!adminResponse.includes('123456789'), 'Strict rule: Must NOT expose numeric Telegram ID');
   const publicAdminCtx = {
     api: {
-      getChatAdministrators: async () => [
+      getChatAdministrators: async (chatId: string) => {
+        assert.strictEqual(chatId, '@EliteForce_Official', 'Admin lookup must query the official announcement channel');
+        return [
         { status: 'creator', user: { id: 7654321, is_bot: false, first_name: 'Public Owner', username: 'public_owner' } },
         { status: 'administrator', user: { id: 7654322, is_bot: false, first_name: 'Support', username: 'EliteForceSupportTeam' } },
         { status: 'administrator', user: { id: 7654323, is_bot: true, first_name: 'Bot', username: 'helper_bot' } },
-      ],
+        ];
+      },
     },
   } as unknown as Context;
   const publicAdminResponse = await getOfficialChannelAdmins(publicAdminCtx);
   assert(publicAdminResponse.includes('Public Owner (@public_owner)'), 'Public creator name and username may appear in the public admin list');
   assert(!publicAdminResponse.includes('7654321') && !publicAdminResponse.includes('7654322'), 'Numeric IDs must never be included in admin output');
   assert(!publicAdminResponse.includes('helper_bot'), 'Bots must not be included in the human admin list');
+  const actualGroupAdminCtx = {
+    chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' },
+    api: {
+      getChatAdministrators: async (chatId: string | number) => {
+        assert.strictEqual(chatId, -100777001, 'Group admin lookup must target the current group');
+        return [{ status: 'administrator', user: { id: 7654324, is_bot: false, first_name: 'Group Admin', username: 'group_mod' } }];
+      },
+    },
+  } as unknown as Context;
+  const actualGroupAdminResponse = await getOfficialChannelAdmins(
+    actualGroupAdminCtx,
+    getAdminLookupTarget(actualGroupAdminCtx, 'who are the admins?')
+  );
+  assert(actualGroupAdminResponse.includes('Community Test Group'), 'Group admin answer must identify the current group');
+  assert(actualGroupAdminResponse.includes('Group Admin (@group_mod)'), 'Group admin answer must use the current group roster');
+  assert(!actualGroupAdminResponse.includes('7654324'), 'Group admin answer must never expose numeric Telegram IDs');
   console.log('✓ Verified official channel administrators & privacy guardrails passed');
 
   // Test 19: Non-Repetitive Introduction Guardrail
