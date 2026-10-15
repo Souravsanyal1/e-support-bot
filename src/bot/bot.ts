@@ -30,37 +30,10 @@ import {
   handleAdminLookup,
   handleAdminLogs,
   handleAdminClearLogs,
+  handleAdminLanguage,
 } from '../handlers/adminHandler';
-
-/**
- * Image MIME types and file extensions that should be treated as images.
- * Covers all common formats Telegram supports.
- */
-const IMAGE_MIME_PREFIXES = ['image/'];
-const IMAGE_EXTENSIONS = [
-  '.jpg', '.jpeg', '.png', '.gif', '.webp',
-  '.bmp', '.tiff', '.tif', '.svg', '.heic',
-  '.heif', '.avif', '.ico', '.jfif',
-];
-
-/**
- * Returns true if a Telegram document message is an image,
- * determined by mime_type OR file extension — whichever is available.
- */
-function isImageDocument(mimeType?: string | null, fileName?: string | null): boolean {
-  if (mimeType) {
-    for (const prefix of IMAGE_MIME_PREFIXES) {
-      if (mimeType.startsWith(prefix)) return true;
-    }
-  }
-  if (fileName) {
-    const lower = fileName.toLowerCase();
-    for (const ext of IMAGE_EXTENSIONS) {
-      if (lower.endsWith(ext)) return true;
-    }
-  }
-  return false;
-}
+import { groupImageModerationMiddleware } from '../middleware/groupImageModeration';
+import { isImageDocument } from '../utils/imageDetector';
 
 /**
  * Initializes and configures the GrammY Telegram Bot instance.
@@ -93,6 +66,7 @@ export function createBot(): Bot {
 
   // 2. Global Middlewares
   bot.use(updateLoggerMiddleware);
+  bot.use(groupImageModerationMiddleware); // Instant image removal in groups before any other processing
   bot.use(rateLimitMiddleware);
   bot.use(sanitizeMessageMiddleware);
   bot.use(languageFilterMiddleware);
@@ -121,6 +95,7 @@ export function createBot(): Bot {
   bot.command('lookup', requireAdmin, handleAdminLookup);
   bot.command('logs', requireAdmin, handleAdminLogs);
   bot.command('clearlogs', requireAdmin, handleAdminClearLogs);
+  bot.command('language', requireAdmin, handleAdminLanguage);
 
   // 5. Natural Conversational Text Messages
   bot.on('message:text', handleTextMessage);

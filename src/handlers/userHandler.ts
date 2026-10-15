@@ -31,6 +31,8 @@ import { checkBadWords } from '../utils/badWordsDetector';
 import { registerAdminCommandsForUser } from '../bot/commands';
 import { checkPromptSecurity } from '../utils/promptSecurity';
 import { logMessageToFile } from '../utils/messageLogger';
+import { isImageDocument } from '../utils/imageDetector';
+import { languageModeManager } from '../bot/languageMode';
 
 const OFFICIAL_CHANNEL_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
@@ -477,13 +479,15 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
       });
     }
 
-    try {
-      const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
-      if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
-        scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+    if (GROUP_MEDIA_POLICY.sendWarningInGroups) {
+      try {
+        const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
+        if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
+          scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+        }
+      } catch {
+        // Silently swallow reply errors
       }
-    } catch {
-      // Silently swallow reply errors
     }
     return;
   }
@@ -503,7 +507,7 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     }
 
     const langCheck = checkMessageLanguage(caption);
-    if (!langCheck.isEnglish) {
+    if (!langCheck.isEnglish && !languageModeManager.isAllLanguagesAllowed()) {
       try {
         await ctx.deleteMessage();
       } catch {
@@ -541,8 +545,34 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
       mimeType = 'image/png';
     } else if (filePath.endsWith('.webp')) {
       mimeType = 'image/webp';
-    } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg')) {
+    } else if (filePath.endsWith('.gif')) {
+      mimeType = 'image/gif';
+    } else if (filePath.endsWith('.bmp')) {
+      mimeType = 'image/bmp';
+    } else if (filePath.endsWith('.svg')) {
+      mimeType = 'image/svg+xml';
+    } else if (filePath.endsWith('.avif')) {
+      mimeType = 'image/avif';
+    } else if (filePath.endsWith('.heic')) {
+      mimeType = 'image/heic';
+    } else if (filePath.endsWith('.heif')) {
+      mimeType = 'image/heif';
+    } else if (filePath.endsWith('.ico')) {
+      mimeType = 'image/x-icon';
+    } else if (filePath.endsWith('.tiff') || filePath.endsWith('.tif')) {
+      mimeType = 'image/tiff';
+    } else if (filePath.endsWith('.jpg') || filePath.endsWith('.jpeg') || filePath.endsWith('.jfif')) {
       mimeType = 'image/jpeg';
+    }
+
+    if (!isImageDocument(mimeType, filePath)) {
+      await deleteLoadingSticker(ctx, loadingStickerId);
+      await safeReply(
+        ctx,
+        '⚠️ The uploaded file format is not supported for image analysis. Please send a JPG, PNG, GIF, WebP, BMP, TIFF, SVG, HEIC, or AVIF image.',
+        { replyToMessage: true }
+      );
+      return;
     }
 
     // Download image buffer securely using internal token
@@ -557,8 +587,6 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     const imageBase64 = Buffer.from(arrayBuf).toString('base64');
 
     // ── Step 1: Inappropriate Image Detection & Auto-Moderation (Req 18) ────────
-    const isGroup = ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup';
-    const isSenderAdmin = ctx.from?.id ? isAdmin(ctx.from.id) : false;
     const shouldModerate = shouldModerateChat(ctx.chat?.id, isGroup) && !isSenderAdmin;
 
     if (shouldModerate && isImageModerationAvailable()) {
@@ -579,7 +607,9 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
         // fail-open: if moderation API is down, proceed to vision (or fail-closed if configured)
         if (env.moderationFailClosed) {
           await deleteLoadingSticker(ctx, loadingStickerId);
-          try { await ctx.deleteMessage(); } catch { /* ignore */ }
+          if (isGroup) {
+            try { await ctx.deleteMessage(); } catch { /* ignore */ }
+          }
           await safeReply(
             ctx,
             '⚠️ Image could not be verified due to a temporary moderation issue. Please try again shortly.',
@@ -591,18 +621,20 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
 
       if (moderationFlagged) {
         await deleteLoadingSticker(ctx, loadingStickerId);
-        try {
-          await ctx.deleteMessage();
-          logger.info('Deleted inappropriate/nude photo (Step 1: Moderation)', {
-            chatId: ctx.chat?.id,
-            messageId: ctx.message?.message_id,
-            fromUserId: ctx.from?.id,
-            reason: moderationReason,
-          });
-        } catch (delErr) {
-          logger.warn('Failed to delete inappropriate photo', {
-            error: delErr instanceof Error ? delErr.message : String(delErr),
-          });
+        if (isGroup) {
+          try {
+            await ctx.deleteMessage();
+            logger.info('Deleted inappropriate/nude photo in group', {
+              chatId: ctx.chat?.id,
+              messageId: ctx.message?.message_id,
+              fromUserId: ctx.from?.id,
+              reason: moderationReason,
+            });
+          } catch (delErr) {
+            logger.warn('Failed to delete inappropriate photo in group', {
+              error: delErr instanceof Error ? delErr.message : String(delErr),
+            });
+          }
         }
 
         await safeReply(
@@ -629,17 +661,19 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     // If caught as inappropriate/nude by multimodal vision or safety filter:
     if (analysisResult.isInappropriate) {
       await deleteLoadingSticker(ctx, loadingStickerId);
-      try {
-        await ctx.deleteMessage();
-        logger.info('Deleted inappropriate/nude photo (Step 2: Vision safety refusal caught)', {
-          chatId: ctx.chat?.id,
-          messageId: ctx.message?.message_id,
-          fromUserId: ctx.from?.id,
-        });
-      } catch (delErr) {
-        logger.warn('Failed to delete inappropriate photo', {
-          error: delErr instanceof Error ? delErr.message : String(delErr),
-        });
+      if (isGroup) {
+        try {
+          await ctx.deleteMessage();
+          logger.info('Deleted inappropriate/nude photo in group', {
+            chatId: ctx.chat?.id,
+            messageId: ctx.message?.message_id,
+            fromUserId: ctx.from?.id,
+          });
+        } catch (delErr) {
+          logger.warn('Failed to delete inappropriate photo in group', {
+            error: delErr instanceof Error ? delErr.message : String(delErr),
+          });
+        }
       }
 
       await safeReply(
@@ -664,10 +698,12 @@ export async function handlePhotoMessage(ctx: Context): Promise<void> {
     logger.error('Error handling photo message', error);
     const errMsg = error instanceof Error ? error.message : String(error);
     if (/safety|inappropriate|explicit|nude|nsfw|adult|content_filter|blocked|refus/i.test(errMsg)) {
-      try {
-        await ctx.deleteMessage();
-      } catch {
-        // ignore
+      if (isGroup) {
+        try {
+          await ctx.deleteMessage();
+        } catch {
+          // ignore
+        }
       }
       await safeReply(
         ctx,
@@ -766,13 +802,15 @@ export async function handleDocumentAsImage(ctx: Context): Promise<void> {
       });
     }
 
-    try {
-      const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
-      if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
-        scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+    if (GROUP_MEDIA_POLICY.sendWarningInGroups) {
+      try {
+        const warningMsg = await ctx.reply(GROUP_MEDIA_POLICY.warningMessage);
+        if (warningMsg?.message_id && GROUP_MEDIA_POLICY.warningAutoDeleteMs > 0) {
+          scheduleAutoDelete(ctx, warningMsg.message_id, GROUP_MEDIA_POLICY.warningAutoDeleteMs);
+        }
+      } catch {
+        // Non-fatal
       }
-    } catch {
-      // Non-fatal
     }
     return;
   }

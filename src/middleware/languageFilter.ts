@@ -4,6 +4,7 @@ import { LANGUAGE_POLICY } from '../config/bot.config';
 import { logger } from '../utils/logger';
 import { checkMessageLanguage, processAndFilterMessageLanguage } from '../utils/languageDetector';
 import { scheduleAutoDelete } from '../utils/telegram';
+import { languageModeManager } from '../bot/languageMode';
 
 /**
  * Global Language Moderation Middleware.
@@ -26,6 +27,12 @@ export async function languageFilterMiddleware(
 ): Promise<void> {
   // If language moderation policy is globally disabled in config, pass through
   if (!LANGUAGE_POLICY.enabled) {
+    await next();
+    return;
+  }
+
+  // Runtime override: admin used /language all → bypass all language filtering
+  if (languageModeManager.isAllLanguagesAllowed()) {
     await next();
     return;
   }

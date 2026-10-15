@@ -6,6 +6,7 @@ import { logger } from '../utils/logger';
 import { botStateManager } from '../bot/state';
 import { knowledgeSyncService } from '../services/knowledgeSync';
 import { clearLogFile } from '../utils/messageLogger';
+import { languageModeManager } from '../bot/languageMode';
 import {
   parseTimeCommand,
   formatTimerConfirmation,
@@ -452,3 +453,65 @@ export async function handleAdminClearLogs(ctx: Context): Promise<void> {
     await safeReply(ctx, `⚠️ Failed to clear logs: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
+
+/**
+ * Handles the admin /language command.
+ * Allows admins to switch runtime language mode:
+ * - /language all     → Allow all languages across groups and private chats
+ * - /language english → Enforce strict English-only (default)
+ * - /language status  → Show current active language mode
+ */
+export async function handleAdminLanguage(ctx: Context): Promise<void> {
+  const text = ctx.message?.text?.trim() || '';
+  const parts = text.split(/\s+/);
+  const subCommand = parts[1]?.toLowerCase();
+  const adminId = ctx.from?.id;
+
+  if (subCommand === 'all') {
+    languageModeManager.setAll(adminId);
+    logger.info('Admin switched language mode to ALL', { adminId });
+    await safeReply(
+      ctx,
+      `🌐 *Language Mode Updated: ALL LANGUAGES ALLOWED*\n\n` +
+      `• The bot will now accept and process messages in *all languages* without deletion or warnings.\n` +
+      `• AI responses will adapt to user language.\n` +
+      `• Bad words/profanity filter remains active.\n\n` +
+      `_To switch back to English only, use:_ \`/language english\``
+    );
+    return;
+  }
+
+  if (subCommand === 'english' || subCommand === 'en') {
+    languageModeManager.setEnglishOnly(adminId);
+    logger.info('Admin switched language mode to ENGLISH ONLY', { adminId });
+    await safeReply(
+      ctx,
+      `🇬🇧 *Language Mode Updated: STRICT ENGLISH ONLY*\n\n` +
+      `• Non-English messages will be filtered / rejected according to group & private chat policy.\n` +
+      `• AI responses will be strictly English only.\n\n` +
+      `_To allow all languages, use:_ \`/language all\``
+    );
+    return;
+  }
+
+  // If subCommand === 'status' or unrecognized/empty, show current status & usage
+  const status = languageModeManager.getStatus();
+  const currentModeStr =
+    status.mode === 'all'
+      ? '🌐 *ALL LANGUAGES* (Language filter bypassed)'
+      : '🇬🇧 *ENGLISH ONLY* (Strict English filter active)';
+
+  const changedInfo = status.changedAt
+    ? `\n_Last changed:_ ${new Date(status.changedAt).toLocaleString('en-US', { timeZone: env.timezone || 'Asia/Dhaka' })}`
+    : '';
+
+  await safeReply(
+    ctx,
+    `⚙️ *Current Language Mode:*\n${currentModeStr}${changedInfo}\n\n` +
+    `*Admin Commands:*\n` +
+    `• \`/language all\` — Allow all languages (no deletion / warning)\n` +
+    `• \`/language english\` — Re-enable strict English-only filter\n` +
+    `• \`/language status\` — Check current mode`
+  );
+}
+

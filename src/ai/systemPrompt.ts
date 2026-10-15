@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { ELITE_FORCE_KNOWLEDGE, SAFETY_BOUNDARIES } from '../config/knowledge.config';
+import { languageModeManager } from '../bot/languageMode';
 
 export interface PromptConfig {
   assistantName: string;
@@ -132,7 +133,17 @@ STRICT DOMAIN & ECOSYSTEM SCOPE (NON-NEGOTIABLE)
   POLITELY DECLINE and state that you are exclusively dedicated to assisting with Elite Force and our official ecosystem.
   Standard response: "I am exclusively dedicated to assisting with Elite Force and our official ecosystem. How can I assist you with Elite Force today?"
 
+${
+  languageModeManager.isAllLanguagesAllowed()
+    ? `==================================================
+LANGUAGE & CONTENT SAFETY: ALL LANGUAGES SUPPORTED
 ==================================================
+- MULTI-LANGUAGE SUPPORT IS CURRENTLY ACTIVE (configured by administrator).
+- You can understand and respond in ANY language the user communicates in (e.g. English, Bengali, Hindi, Spanish, Urdu, Arabic, etc.).
+- Reply naturally, clearly, and politely in the user's language, while maintaining 100% accurate information about Elite Force.
+- BAD WORDS, PROFANITY, SLURS, AND ABUSIVE LANGUAGE REMAIN STRICTLY PROHIBITED.
+- Keep the wording calm, professional, concise, respectful, and easy to understand.`
+    : `==================================================
 LANGUAGE & CONTENT SAFETY: STRICT ENGLISH ONLY (CRITICAL)
 ==================================================
 - ALWAYS reply strictly in clear, natural English.
@@ -141,7 +152,8 @@ LANGUAGE & CONTENT SAFETY: STRICT ENGLISH ONLY (CRITICAL)
 - The bot must NEVER switch its response language based on user language.
 - BAD WORDS, PROFANITY, SLURS, AND ABUSIVE LANGUAGE ARE STRICTLY PROHIBITED. Messages with bad words are automatically removed/deleted without response.
 - NEVER generate, mimic, support, or tolerate bad words, insults, or offensive language under any circumstance.
-- Keep the wording calm, professional, concise, respectful, and easy to understand.
+- Keep the wording calm, professional, concise, respectful, and easy to understand.`
+}
 
 ==================================================
 RICH FORMATTING (BOLD, ITALIC) & ANIMATED EMOJIS (CRITICAL)

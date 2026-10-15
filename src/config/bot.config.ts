@@ -73,6 +73,7 @@ export const ADMIN_COMMANDS_LIST: readonly BotCommand[] = [
   { command: 'lookup', description: 'Lookup user details by @username' },
   { command: 'logs', description: 'Get full message log as txt file' },
   { command: 'clearlogs', description: 'Clear the message log file' },
+  { command: 'language', description: 'Switch language mode (all | english | status)' },
 ] as const;
 
 /**
@@ -96,6 +97,8 @@ export const LANGUAGE_POLICY = {
  */
 export const GROUP_MEDIA_POLICY = {
   blockAllImagesInGroups: true,
+  allowAdminImagesInGroups: true,
+  sendWarningInGroups: false, // Do not send warning or reply in group unless explicitly configured
   warningMessage: '⚠️ Sharing images is not allowed in this community group.',
   warningAutoDeleteMs: 60 * 1000, // 1 minute auto-delete notice
 } as const;

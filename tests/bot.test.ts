@@ -997,12 +997,19 @@ async function runTests() {
   process.env.OPENAI_API_KEY = 'sk-test-openai-mock-key-for-testing-only';
 
   try {
+    const { GROUP_MEDIA_POLICY: gmp } = await import('../src/config/bot.config');
     await handlePhotoMessage(mockBadPhotoCtx);
     // If OPENAI_API_KEY mock caused moderation to run → deleted
     // If no key configured → no moderation, no delete (handled in else branch below)
     if (isOpenAIModerationAvailable()) {
-      assert.strictEqual(inappropriateDeleted, true, 'Inappropriate/nude photo in group must be deleted by OpenAI moderation');
-      assert.strictEqual(inappropriateReplied, true, 'Inappropriate photo must receive the warning notice');
+      assert.strictEqual(inappropriateDeleted, true, 'Inappropriate/nude photo in group must be deleted');
+      assert.strictEqual(inappropriateReplied, gmp.sendWarningInGroups, 'Group warning replied must match sendWarningInGroups config');
+
+      // Also verify direct OpenAI moderation call
+      const { moderateImage: directMod } = await import('../src/ai/moderation');
+      const directResult = await directMod('fake-base64', 'image/jpeg', 'Look at this photo');
+      assert.strictEqual(directResult.flagged, true, 'Direct OpenAI moderation must flag sexual content');
+      assert.strictEqual(directResult.categories?.includes('sexual'), true, 'Must detect sexual category');
     }
   } finally {
     global.fetch = originalFetch2;
@@ -1099,87 +1106,246 @@ async function runTests() {
   assert(env.imageModerationWarningMessage.includes('strictly prohibited'), 'Warning message must enforce community rules');
   console.log('✓ Image moderation safeguards, group filters & deduplication passed');
 
-  // Test 27: Zero-Tolerance Group Image Auto-Removal Policy
-  console.log('Testing Zero-Tolerance Group Image Auto-Removal Policy...');
+  // Test 27: Zero-Tolerance Group Image Auto-Removal Policy & Format Detection
+  console.log('Testing Zero-Tolerance Group Image Auto-Removal Policy & Format Detection...');
   const { GROUP_MEDIA_POLICY: groupMediaPol } = await import('../src/config/bot.config');
   assert.strictEqual(groupMediaPol.blockAllImagesInGroups, true, 'blockAllImagesInGroups must be true');
 
-  let test27GroupPhotoDeleted = false;
-  let test27GroupWarningReplied = false;
+  const { isImageDocument: testIsImageDoc, isImageMessage: testIsImageMsg, SUPPORTED_IMAGE_EXTENSIONS: suppExts } = await import('../src/utils/imageDetector');
+  const { groupImageModerationMiddleware } = await import('../src/middleware/groupImageModeration');
 
-  const mockGroupPhotoCtx = {
+  // Verify all required formats are detected:
+  // JPEG (.jpg, .jpeg, .jfif), PNG (.png), GIF (.gif), WebP (.webp), BMP (.bmp), TIFF (.tiff, .tif), SVG (.svg), HEIC/HEIF (.heic, .heif), AVIF (.avif), ICO (.ico)
+  const requiredExts = ['.jpg', '.jpeg', '.jfif', '.png', '.gif', '.webp', '.bmp', '.tiff', '.tif', '.svg', '.heic', '.heif', '.avif', '.ico'];
+  for (const ext of requiredExts) {
+    assert(suppExts.includes(ext as any), `Must support format extension ${ext}`);
+    assert.strictEqual(testIsImageDoc(null, `test_file${ext}`), true, `isImageDocument must detect ${ext}`);
+    assert.strictEqual(testIsImageDoc('application/octet-stream', `sample${ext}`), true, `Must detect ${ext} even with generic octet-stream MIME`);
+  }
+
+  // Verify MIME type detection without file extension
+  assert.strictEqual(testIsImageDoc('image/jpeg', 'no_extension_file'), true, 'Must detect image/jpeg without extension');
+  assert.strictEqual(testIsImageDoc('image/png', 'unknown'), true, 'Must detect image/png without extension');
+  assert.strictEqual(testIsImageDoc('image/avif', 'document'), true, 'Must detect image/avif without extension');
+  assert.strictEqual(testIsImageDoc('image/heic', 'data.bin'), true, 'Must detect image/heic with misleading bin extension');
+  assert.strictEqual(testIsImageDoc('application/pdf', 'whitepaper.pdf'), false, 'Must NOT detect PDF as image');
+
+  // Verify isImageMessage across photo, animation, sticker, and document
+  assert.strictEqual(testIsImageMsg({ photo: [{ file_id: 'p1' }] }), true, 'Must detect photo message');
+  assert.strictEqual(testIsImageMsg({ animation: { file_id: 'a1' } }), true, 'Must detect animation/GIF message');
+  assert.strictEqual(testIsImageMsg({ sticker: { file_id: 's1' } }), true, 'Must detect sticker message');
+  assert.strictEqual(testIsImageMsg({ document: { file_name: 'scan.avif', mime_type: 'image/avif' } }), true, 'Must detect document image message');
+  assert.strictEqual(testIsImageMsg({ text: 'Hello Celia, how are you?' }), false, 'Text message must NOT be flagged as image');
+
+  // Test groupImageModerationMiddleware in Group: photo must be deleted, next() NOT called
+  let mwDeletedPhoto = false;
+  let mwNextCalledPhoto = false;
+  const mockGroupMwPhotoCtx = {
     chat: { id: -1005555555, type: 'supergroup' },
-    from: { id: 777123, is_bot: false },
+    from: { id: 777123 },
     message: {
       message_id: 334455,
       photo: [{ file_id: 'sample_file_id', file_size: 1024 }],
-      date: Math.floor(Date.now() / 1000),
+      caption: 'Look at this photo with text caption',
     },
-    deleteMessage: async () => {
-      test27GroupPhotoDeleted = true;
-      return true;
+    api: {
+      deleteMessage: async (chatId: number, messageId: number) => {
+        mwDeletedPhoto = true;
+        assert.strictEqual(chatId, -1005555555);
+        assert.strictEqual(messageId, 334455);
+        return true;
+      },
     },
-    reply: async (text: string) => {
-      test27GroupWarningReplied = true;
-      assert.strictEqual(text, groupMediaPol.warningMessage);
-      return { message_id: 445566 };
-    },
+    reply: async () => ({ message_id: 9991 }),
   } as unknown as Context;
 
-  await handlePhotoMessage(mockGroupPhotoCtx);
-  assert.strictEqual(test27GroupPhotoDeleted, true, 'Regular user image in group must be deleted immediately');
-  assert.strictEqual(test27GroupWarningReplied, true, 'Group image notice must be sent to the group');
+  await groupImageModerationMiddleware(mockGroupMwPhotoCtx, async () => {
+    mwNextCalledPhoto = true;
+  });
+  assert.strictEqual(mwDeletedPhoto, true, 'Group photo must be deleted immediately in middleware');
+  assert.strictEqual(mwNextCalledPhoto, false, 'Middleware must STOP processing (never call next) for group photo');
 
-  // Test document image attachment in group
-  let test27GroupDocDeleted = false;
-  let test27GroupDocWarning = false;
-
-  const mockGroupDocCtx = {
-    chat: { id: -1005555555, type: 'supergroup' },
-    from: { id: 777124, is_bot: false },
+  // Test groupImageModerationMiddleware in Group: animated GIF / animation must be deleted
+  let mwDeletedAnim = false;
+  let mwNextCalledAnim = false;
+  const mockGroupMwAnimCtx = {
+    chat: { id: -1005555555, type: 'group' },
+    from: { id: 777124 },
     message: {
       message_id: 334456,
-      document: { file_id: 'doc_img_file_id', file_size: 2048, mime_type: 'image/png' },
-      date: Math.floor(Date.now() / 1000),
+      animation: { file_id: 'anim_id', duration: 3 },
     },
-    deleteMessage: async () => {
-      test27GroupDocDeleted = true;
-      return true;
+    api: {
+      deleteMessage: async () => {
+        mwDeletedAnim = true;
+        return true;
+      },
     },
-    reply: async (text: string) => {
-      test27GroupDocWarning = true;
-      assert.strictEqual(text, groupMediaPol.warningMessage);
-      return { message_id: 445567 };
+    reply: async () => ({ message_id: 9992 }),
+  } as unknown as Context;
+
+  await groupImageModerationMiddleware(mockGroupMwAnimCtx, async () => {
+    mwNextCalledAnim = true;
+  });
+  assert.strictEqual(mwDeletedAnim, true, 'Group animation must be deleted immediately');
+  assert.strictEqual(mwNextCalledAnim, false, 'Middleware must stop processing for animation');
+
+  // Test groupImageModerationMiddleware in Group: sticker must be deleted
+  let mwDeletedSticker = false;
+  const mockGroupMwStickerCtx = {
+    chat: { id: -1005555555, type: 'supergroup' },
+    from: { id: 777125 },
+    message: {
+      message_id: 334457,
+      sticker: { file_id: 'sticker_id', is_animated: false },
+    },
+    api: {
+      deleteMessage: async () => {
+        mwDeletedSticker = true;
+        return true;
+      },
     },
   } as unknown as Context;
 
-  await handlePhotoMessage(mockGroupDocCtx);
-  assert.strictEqual(test27GroupDocDeleted, true, 'Regular user image document in group must be deleted immediately');
-  assert.strictEqual(test27GroupDocWarning, true, 'Group image notice must be sent for image documents');
+  await groupImageModerationMiddleware(mockGroupMwStickerCtx, async () => {});
+  assert.strictEqual(mwDeletedSticker, true, 'Group sticker must be deleted immediately');
 
-  // Test error resilience when deleteMessage throws (e.g. lack of permissions)
-  let test27FailedDeleteWarning = false;
+  // Test groupImageModerationMiddleware in Group: non-image text message must pass through to next()
+  let mwTextNextCalled = false;
+  const mockGroupMwTextCtx = {
+    chat: { id: -1005555555, type: 'supergroup' },
+    from: { id: 777126 },
+    message: {
+      message_id: 334458,
+      text: 'What is the official Elite Force channel?',
+    },
+  } as unknown as Context;
+
+  await groupImageModerationMiddleware(mockGroupMwTextCtx, async () => {
+    mwTextNextCalled = true;
+  });
+  assert.strictEqual(mwTextNextCalled, true, 'Non-image text message in group must pass through to next()');
+
+  // Test groupImageModerationMiddleware in Private Chat: image must NOT be deleted, must pass through to next()
+  let mwPrivateDeleted = false;
+  let mwPrivateNextCalled = false;
+  const mockPrivateMwPhotoCtx = {
+    chat: { id: 888999, type: 'private' },
+    from: { id: 888999 },
+    message: {
+      message_id: 112233,
+      photo: [{ file_id: 'priv_photo' }],
+    },
+    api: {
+      deleteMessage: async () => {
+        mwPrivateDeleted = true;
+        return true;
+      },
+    },
+  } as unknown as Context;
+
+  await groupImageModerationMiddleware(mockPrivateMwPhotoCtx, async () => {
+    mwPrivateNextCalled = true;
+  });
+  assert.strictEqual(mwPrivateDeleted, false, 'Private chat images must NOT be deleted in middleware');
+  assert.strictEqual(mwPrivateNextCalled, true, 'Private chat images must pass through to AI vision handler');
+
+  // Test error resilience when Telegram deleteMessage API fails (e.g. missing permissions)
+  let mwFailedDeleteHandled = false;
   const mockFailedDeleteCtx = {
     chat: { id: -1005555555, type: 'supergroup' },
-    from: { id: 777125, is_bot: false },
+    from: { id: 777127 },
     message: {
-      message_id: 334457,
-      photo: [{ file_id: 'sample_file_id_2', file_size: 1024 }],
-      date: Math.floor(Date.now() / 1000),
+      message_id: 334459,
+      photo: [{ file_id: 'fail_photo' }],
     },
-    deleteMessage: async () => {
-      throw new Error("Telegram Bot API: 400 Bad Request: message can't be deleted");
-    },
-    reply: async () => {
-      test27FailedDeleteWarning = true;
-      return { message_id: 445568 };
+    api: {
+      deleteMessage: async () => {
+        throw new Error("Telegram Bot API: 400 Bad Request: message can't be deleted");
+      },
     },
   } as unknown as Context;
 
   // Must not throw or crash
-  await handlePhotoMessage(mockFailedDeleteCtx);
-  assert.strictEqual(test27FailedDeleteWarning, true, 'Must send warning even if deleteMessage fails due to permissions');
-  console.log('✓ Zero-tolerance group image auto-removal policy passed');
+  await groupImageModerationMiddleware(mockFailedDeleteCtx, async () => {});
+  mwFailedDeleteHandled = true;
+  assert.strictEqual(mwFailedDeleteHandled, true, 'Middleware must handle deleteMessage failure gracefully without crashing');
+  console.log('✓ Zero-tolerance group image auto-removal policy & format detection passed');
+
+  // Test 28: Admin Language Mode Switching & Language Filter Bypass
+  console.log('Testing Admin Language Mode Switching & Filter Bypass...');
+  const { languageModeManager } = await import('../src/bot/languageMode');
+  const { handleAdminLanguage } = await import('../src/handlers/adminHandler');
+
+  // 1. Initial default state must be 'english'
+  languageModeManager.setEnglishOnly();
+  assert.strictEqual(languageModeManager.getMode(), 'english');
+  assert.strictEqual(languageModeManager.isAllLanguagesAllowed(), false);
+
+  // 2. /language all switches mode to 'all'
+  let replyText = '';
+  const mockAdminAllCtx = {
+    message: { text: '/language all' },
+    from: { id: 123456 },
+    reply: async (msg: string) => {
+      replyText = msg;
+      return { message_id: 999 };
+    },
+  } as unknown as Context;
+
+  await handleAdminLanguage(mockAdminAllCtx);
+  assert.strictEqual(languageModeManager.getMode(), 'all');
+  assert.strictEqual(languageModeManager.isAllLanguagesAllowed(), true);
+  assert(replyText.includes('ALL LANGUAGES ALLOWED'), 'Reply must confirm all languages mode');
+
+  // 3. When mode is 'all', non-English messages pass through middleware without deletion
+  let nextCalled = false;
+  let deletedWhenAll = false;
+  const mockNonEnglishCtx = {
+    chat: { id: -100999, type: 'supergroup' },
+    message: {
+      message_id: 55512,
+      text: 'হ্যালো ভাই কেমন আছেন আপনারা সবাই?',
+    },
+    deleteMessage: async () => {
+      deletedWhenAll = true;
+      return true;
+    },
+    reply: async () => {
+      return { message_id: 55513 };
+    },
+  } as unknown as Context;
+
+  await languageFilterMiddleware(mockNonEnglishCtx, async () => {
+    nextCalled = true;
+  });
+  assert.strictEqual(nextCalled, true, 'Next must be called when all languages mode is active');
+  assert.strictEqual(deletedWhenAll, false, 'Message must NOT be deleted when all languages mode is active');
+
+  // 4. System prompt adapts when 'all' is active
+  const promptAll = buildSystemPrompt();
+  assert(promptAll.includes('ALL LANGUAGES SUPPORTED'), 'Prompt must indicate all languages supported');
+
+  // 5. /language english switches back to 'english'
+  const mockAdminEnglishCtx = {
+    message: { text: '/language english' },
+    from: { id: 123456 },
+    reply: async (msg: string) => {
+      replyText = msg;
+      return { message_id: 1000 };
+    },
+  } as unknown as Context;
+
+  await handleAdminLanguage(mockAdminEnglishCtx);
+  assert.strictEqual(languageModeManager.getMode(), 'english');
+  assert.strictEqual(languageModeManager.isAllLanguagesAllowed(), false);
+  assert(replyText.includes('STRICT ENGLISH ONLY'), 'Reply must confirm strict English mode');
+
+  // 6. System prompt reverts to English only
+  const promptEnglish = buildSystemPrompt();
+  assert(promptEnglish.includes('STRICT ENGLISH ONLY'), 'Prompt must indicate strict English only');
+
+  console.log('✓ Admin language mode switching & filter bypass passed');
 
   // Cleanup timers
   rateLimiter.destroy();
