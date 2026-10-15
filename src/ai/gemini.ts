@@ -41,13 +41,13 @@ export function getEmergencyKnowledgeResponse(
     if (/\b(?:link|url|claim|mint)\b/i.test(query) && !confirmedFacts.length) {
       return `I don't have a verified Gaming NFT claim or mint link. Check ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for official updates, and never share your wallet's seed phrase or private key.`;
     }
-    if (/\b(?:what is|what are|meaning)\b/i.test(query)) {
-      return 'A gaming NFT is a blockchain-based digital item that might represent a collectible, game item, or access. Its actual use depends on the project; Elite Force has not confirmed specific Gaming NFT features yet.';
+    if (/\b(?:what is|what are|meaning|info|information|explain|about)\b/i.test(query)) {
+      return 'A Gaming NFT is a blockchain-based digital item that can represent a collectible, in-game item, membership, or access, depending on the project. Elite Force has not officially confirmed its Gaming NFT launch, supply, benefits, or game use yet.';
     }
     if (confirmedFacts.length) {
       return `The verified Elite Force Gaming NFT details I have are: ${confirmedFacts.join(' ')}`;
     }
-    return `Elite Force hasn't confirmed Gaming NFT details such as launch, supply, benefits, staking, or in-game use yet. Watch ${ELITE_FORCE_KNOWLEDGE.officialChannels.telegramChannel} for updates.`;
+    return "Elite Force hasn't confirmed official Gaming NFT launch, supply, rewards, staking, or in-game utility yet, so I can't give those as current project facts.";
   }
 
   if (query.includes('timer') || query.includes('countdown')) {

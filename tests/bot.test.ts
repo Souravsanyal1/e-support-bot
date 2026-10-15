@@ -1271,6 +1271,9 @@ async function runTests() {
   const nftUnknownResponse = getEmergencyKnowledgeResponse('How many Elite Force Gaming NFTs will there be?');
   assert(nftUnknownResponse.includes("hasn't confirmed"), 'Unknown Gaming NFT details should be described as unconfirmed');
   assert(nftUnknownResponse.length < 300, 'Simple Gaming NFT fallback should stay concise');
+  const nftInfoResponse = getEmergencyKnowledgeResponse('Give me Gaming NFT info');
+  assert(nftInfoResponse.includes('blockchain-based digital item'), 'NFT info request should receive a direct explanation');
+  assert(!nftInfoResponse.includes('https://'), 'General NFT information should not be replaced by a channel link');
   const nftLinkResponse = getEmergencyKnowledgeResponse('Where is the official Gaming NFT claim link?');
   assert(nftLinkResponse.includes('https://t.me/Elite_Force_Official'), 'NFT link fallback should direct users to the official channel');
   assert(nftLinkResponse.includes('seed phrase'), 'NFT claim fallback should retain wallet safety guidance');
