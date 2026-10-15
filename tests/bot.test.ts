@@ -1266,11 +1266,12 @@ async function runTests() {
   assert.strictEqual(isAdminListQuery('show me the admin list'), true, 'Should detect an explicit admin-list request');
   assert.strictEqual(isAdminListQuery('what is elite force'), false, 'Should not match unrelated queries');
   assert.strictEqual(isOwnerIdentityQuery('What is the owner ID?'), true, 'Owner ID requests must be blocked');
+  assert.strictEqual(isOwnerIdentityQuery('Who is the owner?'), true, 'Owner identity requests must be blocked');
   assert.strictEqual(isOwnerIdentityQuery('Who are the official admins?'), false, 'Public admin-list requests must remain answerable');
   const groupAdminCtx = { chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' } } as unknown as Context;
-  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the admins?'), -100777001, 'Admin questions in groups must inspect that group');
+  assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the admins?'), '@Elite_Force_Official', 'General admin questions must inspect the official community group');
   assert.strictEqual(getAdminLookupTarget(groupAdminCtx, 'who are the channel admins?'), '@EliteForce_Official', 'Explicit channel-admin questions must inspect the official announcement channel');
-  assert.strictEqual(getAdminLookupTarget({ chat: { id: 500, type: 'private' } } as unknown as Context, 'who are admins?'), '@EliteForce_Official', 'Private admin questions must use the verified official channel list');
+  assert.strictEqual(getAdminLookupTarget({ chat: { id: 500, type: 'private' } } as unknown as Context, 'who are admins?'), '@Elite_Force_Official', 'Private general admin questions must use the official community group list');
 
   const mockChannelAdminCtx = {
     api: {
@@ -1280,7 +1281,7 @@ async function runTests() {
     },
   } as unknown as Context;
 
-  const adminResponse = await getOfficialChannelAdmins(mockChannelAdminCtx);
+  const adminResponse = await getOfficialChannelAdmins(mockChannelAdminCtx, '@EliteForce_Official');
   assert(adminResponse.includes('Elite Force | Support (@EliteForceSupportTeam)'), 'Must include official support admin');
   assert(adminResponse.includes('𝓓𝓮𝓕𝓲 𝓖𝓮𝓷𝓮𝓻𝓪𝓽𝓸𝓻 (@cripto_currency_bro)'), 'Must include verified DeFi Generator admin');
   assert(adminResponse.includes('excludes bots'), 'Must mention excluding bots');
@@ -1289,7 +1290,7 @@ async function runTests() {
   const publicAdminCtx = {
     api: {
       getChatAdministrators: async (chatId: string) => {
-        assert.strictEqual(chatId, '@EliteForce_Official', 'Admin lookup must query the official announcement channel');
+        assert.strictEqual(chatId, '@Elite_Force_Official', 'General admin lookup must query the official community group');
         return [
         { status: 'creator', user: { id: 7654321, is_bot: false, first_name: 'Public Owner', username: 'public_owner' } },
         { status: 'administrator', user: { id: 7654322, is_bot: false, first_name: 'Support', username: 'EliteForceSupportTeam' } },
@@ -1299,15 +1300,18 @@ async function runTests() {
     },
   } as unknown as Context;
   const publicAdminResponse = await getOfficialChannelAdmins(publicAdminCtx);
-  assert(publicAdminResponse.includes('Public Owner (@public_owner)'), 'Public creator name and username may appear in the public admin list');
+  assert(!publicAdminResponse.includes('Public Owner') && !publicAdminResponse.includes('@public_owner'), 'Owner/creator must be excluded from admin list');
   assert(!publicAdminResponse.includes('7654321') && !publicAdminResponse.includes('7654322'), 'Numeric IDs must never be included in admin output');
   assert(!publicAdminResponse.includes('helper_bot'), 'Bots must not be included in the human admin list');
   const actualGroupAdminCtx = {
     chat: { id: -100777001, type: 'supergroup', title: 'Community Test Group' },
     api: {
       getChatAdministrators: async (chatId: string | number) => {
-        assert.strictEqual(chatId, -100777001, 'Group admin lookup must target the current group');
-        return [{ status: 'administrator', user: { id: 7654324, is_bot: false, first_name: 'Group Admin', username: 'group_mod' } }];
+        assert.strictEqual(chatId, '@Elite_Force_Official', 'General admin lookup must target the configured official group');
+        return [
+          { status: 'creator', user: { id: 7654324, is_bot: false, first_name: 'Owner', username: 'private_owner' } },
+          { status: 'administrator', user: { id: 7654325, is_bot: false, first_name: 'Group Admin', username: 'group_mod' } },
+        ];
       },
     },
   } as unknown as Context;
@@ -1315,9 +1319,10 @@ async function runTests() {
     actualGroupAdminCtx,
     getAdminLookupTarget(actualGroupAdminCtx, 'who are the admins?')
   );
-  assert(actualGroupAdminResponse.includes('Community Test Group'), 'Group admin answer must identify the current group');
+  assert(actualGroupAdminResponse.includes('official Elite Force Telegram community group'), 'Admin answer must identify the configured official community group');
   assert(actualGroupAdminResponse.includes('Group Admin (@group_mod)'), 'Group admin answer must use the current group roster');
-  assert(!actualGroupAdminResponse.includes('7654324'), 'Group admin answer must never expose numeric Telegram IDs');
+  assert(!actualGroupAdminResponse.includes('Owner') && !actualGroupAdminResponse.includes('private_owner'), 'Owner must be excluded from the community admin list');
+  assert(!actualGroupAdminResponse.includes('7654324') && !actualGroupAdminResponse.includes('7654325'), 'Admin answer must never expose numeric Telegram IDs');
   console.log('✓ Verified official channel administrators & privacy guardrails passed');
 
   // Test 19: Non-Repetitive Introduction Guardrail

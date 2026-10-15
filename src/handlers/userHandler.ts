@@ -42,8 +42,9 @@ import {
 
 
 const OFFICIAL_CHANNEL_ID = '@EliteForce_Official';
+const OFFICIAL_COMMUNITY_GROUP_ID = '@Elite_Force_Official';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
-const OWNER_QUERY = /\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
+const OWNER_QUERY = /\b(?:who(?:\s+is)?\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?|name\s+of\s+(?:the\s+)?|(?:the\s+)?)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
 
 export const VERIFIED_OFFICIAL_ADMINS = [
   '• Elite Force | Support (@EliteForceSupportTeam)',
@@ -69,24 +70,21 @@ export function isOwnerIdentityQuery(text: string): boolean {
   return OWNER_QUERY.test(text);
 }
 
-export function getAdminLookupTarget(ctx: Context, question: string): string | number {
+export function getAdminLookupTarget(_ctx: Context, question: string): string | number {
   if (/\bchannel\b/i.test(question)) return OFFICIAL_CHANNEL_ID;
-  if ((ctx.chat?.type === 'group' || ctx.chat?.type === 'supergroup') && ctx.chat.id) {
-    return ctx.chat.id;
-  }
-  return OFFICIAL_CHANNEL_ID;
+  return OFFICIAL_COMMUNITY_GROUP_ID;
 }
 
-const OWNER_PRIVACY_RESPONSE = "I can't share numeric Telegram IDs, including the owner's. I can provide publicly listed admin names and usernames.";
+const OWNER_PRIVACY_RESPONSE = "I can't identify the owner or share the owner's ID. I can list the other publicly listed admins.";
 
 export async function getOfficialChannelAdmins(
   ctx: Context,
-  targetChatId: string | number = OFFICIAL_CHANNEL_ID
+  targetChatId: string | number = OFFICIAL_COMMUNITY_GROUP_ID
 ): Promise<string> {
   try {
     const admins = await ctx.api.getChatAdministrators(targetChatId);
     const humanAdmins = admins
-      .filter((admin) => !admin.user.is_bot && ['creator', 'administrator'].includes(admin.status))
+      .filter((admin) => !admin.user.is_bot && admin.status === 'administrator')
       .map((admin) => {
         const name = [admin.user.first_name, admin.user.last_name].filter(Boolean).join(' ').trim();
         return admin.user.username ? `${name || 'Admin'} (@${admin.user.username})` : name || 'Admin';
@@ -96,8 +94,8 @@ export async function getOfficialChannelAdmins(
     // Public Telegram display names/usernames are okay; never include numeric IDs.
     if (uniqueAdmins.length > 0) {
       const scope = targetChatId === OFFICIAL_CHANNEL_ID
-        ? 'the official Elite Force Telegram channel'
-        : (ctx.chat?.title || 'this Telegram group');
+        ? 'the official Elite Force Telegram announcement channel'
+        : 'the official Elite Force Telegram community group';
       return [
         `Current human administrators of ${scope} (verified live from Telegram):`,
         ...uniqueAdmins.map((name) => `• ${name}`),
@@ -112,7 +110,7 @@ export async function getOfficialChannelAdmins(
       error: error instanceof Error ? error.message : String(error),
     });
     if (targetChatId === OFFICIAL_CHANNEL_ID) return VERIFIED_OFFICIAL_ADMINS_TEXT;
-    return `I can't read the live admin list for ${ctx.chat?.title || 'this Telegram group'} right now. Please check the group's Info page and open Administrators.`;
+    return "I can't fetch the current admin list for the official community group right now. Please check the Administrators section in the group info.";
   }
 }
 

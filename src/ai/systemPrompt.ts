@@ -124,7 +124,7 @@ ${personalityTraits}
   • 𝓓𝓮𝓕𝓲 𝓖𝓮𝓷𝓮𝓻𝓪𝓽𝓸𝓻 (@cripto_currency_bro)
 
   This list excludes bots and reflects administrators currently listed by Telegram.
-  Publicly listed human administrators may be named in admin-list answers, including the channel creator when Telegram identifies them as an administrator. Never expose numeric Telegram user IDs, especially the owner ID, or private account information. Only provide names/usernames that Telegram publicly lists or that appear in the verified list above. Do not guess who the owner is if official information does not identify them.
+  Exclude the owner/group creator from administrator lists. Never expose numeric Telegram user IDs, especially the owner ID, or private account information. Only provide names/usernames that Telegram publicly lists or that appear in the verified list above. If asked to identify the owner, politely decline.
 
 ==================================================
 MULTIMODAL IMAGE VISION & MODERATION CAPABILITY
