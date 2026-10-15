@@ -75,8 +75,12 @@ export interface MessageWithEntities {
  * const { text, entities } = buildMessageWithEntities("🚀 Welcome to Elite Force!\n💎 E-FORCE coming soon.");
  * await ctx.api.sendMessage(chatId, text, { entities });
  */
-export function buildMessageWithEntities(plainText: string): MessageWithEntities {
+export function buildMessageWithEntities(
+  plainText: string,
+  animateCustomEmoji = true
+): MessageWithEntities {
   const entities: TelegramEntity[] = [];
+  if (!animateCustomEmoji) return { text: plainText, entities };
   let match: RegExpExecArray | null;
 
   // Reset regex state
@@ -224,7 +228,7 @@ export function escapeHtml(text: string): string {
  *
  * Use when the message contains Markdown formatting (bold, italic, links, code).
  */
-export function formatToTelegramHtml(markdownText: string): string {
+export function formatToTelegramHtml(markdownText: string, animateCustomEmoji = true): string {
   if (!markdownText) return '';
 
   // 1. Protect URLs by replacing them with unique placeholders
@@ -259,11 +263,13 @@ export function formatToTelegramHtml(markdownText: string): string {
   });
 
   // 8. Animated custom emojis: single-pass replacement
-  CUSTOM_EMOJI_REGEX.lastIndex = 0;
-  html = html.replace(CUSTOM_EMOJI_REGEX, (match) => {
-    const id = CUSTOM_EMOJI_MAP[match];
-    return id ? `<tg-emoji emoji-id="${id}">${match}</tg-emoji>` : match;
-  });
+  if (animateCustomEmoji) {
+    CUSTOM_EMOJI_REGEX.lastIndex = 0;
+    html = html.replace(CUSTOM_EMOJI_REGEX, (match) => {
+      const id = CUSTOM_EMOJI_MAP[match];
+      return id ? `<tg-emoji emoji-id="${id}">${match}</tg-emoji>` : match;
+    });
+  }
 
   return html;
 }

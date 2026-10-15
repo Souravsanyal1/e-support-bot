@@ -324,6 +324,16 @@ export async function deleteLoadingSticker(
   }
 }
 
+/** Shows the animated Elite Force sticker after a reply, then removes it. */
+export async function showReplyStickerTemporarily(ctx: Context): Promise<void> {
+  const messageId = await sendLoadingSticker(ctx);
+  if (!messageId) return;
+
+  // Pick a fresh duration for each reply, inclusive of both endpoints.
+  const delayMs = 5_000 + Math.floor(Math.random() * 5_001);
+  scheduleAutoDelete(ctx, messageId, delayMs);
+}
+
 /**
  * Schedules a Telegram message to be automatically deleted after a specified duration
  * (default: 2 minutes = 120,000 ms).

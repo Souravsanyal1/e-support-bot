@@ -17,6 +17,7 @@ import {
   sendTypingAction,
   sendLoadingSticker,
   deleteLoadingSticker,
+  showReplyStickerTemporarily,
   scheduleAutoDelete,
   sleep,
 } from '../utils/telegram';
@@ -59,7 +60,7 @@ function enqueueChatReply(chatId: number, task: () => Promise<void>): Promise<vo
   return tracked;
 }
 
-async function replyInChatOrder(ctx: Context, text: string, replyToMessage = false): Promise<void> {
+async function replyInChatOrder(ctx: Context, text: string, replyToMessage = true): Promise<void> {
   await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
     await safeReply(ctx, text, { replyToMessage });
   });
@@ -358,11 +359,12 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
       if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
       await deleteLoadingSticker(ctx, loadingStickerId);
-      await safeReply(ctx, response);
+      await safeReply(ctx, response, { replyToMessage: true });
+      await showReplyStickerTemporarily(ctx);
     } catch (error) {
       await deleteLoadingSticker(ctx, loadingStickerId);
       logger.error('Error handling /ask command', error);
-      await safeReply(ctx, "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.");
+      await safeReply(ctx, "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.", { replyToMessage: true });
     }
   });
 }
@@ -519,12 +521,13 @@ export async function handleTextMessage(
       if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
 
       await deleteLoadingSticker(ctx, loadingStickerId);
-      await safeReply(ctx, response);
+      await safeReply(ctx, response, { replyToMessage: true });
+      await showReplyStickerTemporarily(ctx);
       if (ctx.chat?.id) recordReply(ctx.chat.id, queryToProcess);
     } catch (error) {
       await deleteLoadingSticker(ctx, loadingStickerId);
       logger.error('Error handling direct text message', error);
-      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.");
+      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.", { replyToMessage: true });
     }
   });
 }
@@ -816,7 +819,8 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
     }
 
     await deleteLoadingSticker(ctx, loadingStickerId);
-    await safeReply(ctx, analysisResult.text);
+    await safeReply(ctx, analysisResult.text, { replyToMessage: true });
+    await showReplyStickerTemporarily(ctx);
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);
