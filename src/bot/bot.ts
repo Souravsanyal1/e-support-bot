@@ -50,6 +50,20 @@ import { queuePausedMessage, replayPausedMessages } from '../services/pausedMess
  */
 export function createBot(): Bot {
   const bot = new Bot(env.telegramBotToken);
+  const recentUpdateIds = new Set<number>();
+
+  // Telegram may redeliver an update after a transient polling/network error.
+  // Claim it before any middleware can send a sticker or reply twice.
+  bot.use(async (ctx, next) => {
+    const updateId = ctx.update.update_id;
+    if (recentUpdateIds.has(updateId)) return;
+    recentUpdateIds.add(updateId);
+    if (recentUpdateIds.size > 2000) {
+      const oldest = recentUpdateIds.values().next().value;
+      if (oldest !== undefined) recentUpdateIds.delete(oldest);
+    }
+    await next();
+  });
 
   // 1. Global Safe Error Boundary
   bot.catch((err) => {
