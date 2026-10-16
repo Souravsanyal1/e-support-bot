@@ -47,7 +47,77 @@ const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 const OWNER_QUERY = /\b(?:who(?:\s+is)?\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?|name\s+of\s+(?:the\s+)?|(?:the\s+)?)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
 const chatReplyQueues = new Map<string, Promise<void>>();
 const chatGenerationSlots = new Map<string, { active: number; waiters: Array<() => void> }>();
+const chatLoadingIndicators = new Map<string, {
+  active: number;
+  messageId: number | null;
+  hidden: boolean;
+  attempted: boolean;
+  sending?: Promise<number | null>;
+  deleting?: Promise<void>;
+}>();
+// A small per-chat limit reduces queue delay without overwhelming the provider.
 const MAX_PARALLEL_GROUP_GENERATIONS = 3;
+
+async function acquireChatLoadingIndicator(ctx: Context): Promise<() => Promise<void>> {
+  const chatId = ctx.chat?.id ?? 0;
+  const key = String(chatId);
+  let state: NonNullable<ReturnType<typeof chatLoadingIndicators.get>>;
+  while (true) {
+    const existing = chatLoadingIndicators.get(key);
+    if (existing?.deleting) {
+      await existing.deleting;
+      continue;
+    }
+    if (existing) {
+      state = existing;
+      break;
+    }
+    state = { active: 0, messageId: null, hidden: false, attempted: false };
+    chatLoadingIndicators.set(key, state);
+    break;
+  }
+  state.active += 1;
+
+  if (!state.hidden && !state.attempted && !state.messageId && !state.sending) {
+    const current = state;
+    current.attempted = true;
+    current.sending = sendLoadingSticker(ctx).then((messageId) => {
+      current.messageId = messageId;
+      return messageId;
+    }).finally(() => {
+      current.sending = undefined;
+    });
+  }
+  await state.sending;
+
+  let released = false;
+  return async () => {
+    if (released) return;
+    released = true;
+    if (chatLoadingIndicators.get(key) !== state) return;
+    state.active = Math.max(0, state.active - 1);
+    if (state.active === 0) {
+      const deleting = deleteLoadingSticker(ctx, state.messageId).finally(() => {
+        if (chatLoadingIndicators.get(key) === state && state.active === 0) {
+          chatLoadingIndicators.delete(key);
+        }
+        state.deleting = undefined;
+      });
+      state.deleting = deleting;
+      await deleting;
+    }
+  };
+}
+
+async function hideChatLoadingIndicator(ctx: Context): Promise<void> {
+  const state = chatLoadingIndicators.get(String(ctx.chat?.id ?? 0));
+  if (!state || state.hidden) return;
+  state.hidden = true;
+  await state.sending;
+  const messageId = state.messageId;
+  state.messageId = null;
+  await deleteLoadingSticker(ctx, messageId);
+}
 
 async function withChatGenerationSlot<T>(
   chatId: number,
@@ -91,14 +161,17 @@ async function enqueueGeneratedReply<T>(
   const tracked = previous.catch(() => undefined).then(() => ticket);
   chatReplyQueues.set(key, tracked);
 
-  // Preserve a single conversation's context order; group members can be
-  // handled concurrently, while their visible answers stay FIFO.
+  // Process each chat in arrival order to keep every answer tied to its question.
   const maxParallel = ctx.chat?.type === 'private' ? 1 : MAX_PARALLEL_GROUP_GENERATIONS;
+  let releaseLoadingIndicator: () => Promise<void> = async () => undefined;
   try {
+    releaseLoadingIndicator = await acquireChatLoadingIndicator(ctx);
     const result = await withChatGenerationSlot(chatId, maxParallel, generate);
     await previous.catch(() => undefined);
+    await hideChatLoadingIndicator(ctx);
     await deliver(result);
   } finally {
+    await releaseLoadingIndicator();
     releaseTicket();
     if (chatReplyQueues.get(key) === tracked) chatReplyQueues.delete(key);
   }
@@ -399,7 +472,6 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     ctx,
     async () => {
       await sendTypingAction(ctx);
-      const loadingStickerId = await sendLoadingSticker(ctx);
       try {
       await syncChannelHistoryWithoutHoldingReply();
       const response = await generateSupportResponse(
@@ -408,17 +480,15 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
         getRelevantOfficialChannelContext(query),
         ctx.chat?.type === 'private' ? ctx.from?.id : undefined
       );
-        return { response, loadingStickerId };
+        return { response };
       } catch (error) {
         logger.error('Error handling /ask command', error);
         return {
           response: "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.",
-          loadingStickerId,
         };
       }
     },
-    async ({ response, loadingStickerId }) => {
-      await deleteLoadingSticker(ctx, loadingStickerId);
+    async ({ response }) => {
       await safeReply(ctx, response, { replyToMessage: true });
     }
   ).catch((error) => logger.error('Failed to deliver /ask reply', error));
@@ -560,7 +630,6 @@ export async function handleTextMessage(
     ctx,
     async () => {
       await sendTypingAction(ctx);
-      const loadingStickerId = await sendLoadingSticker(ctx);
       try {
       await syncChannelHistoryWithoutHoldingReply();
       const response = await generateSupportResponse(
@@ -570,17 +639,15 @@ export async function handleTextMessage(
         ctx.chat?.type === 'private' ? ctx.from?.id : undefined,
         isReplyToBot ? ctx.message?.reply_to_message?.text : undefined
       );
-        return { response, loadingStickerId };
+        return { response };
       } catch (error) {
         logger.error('Error handling direct text message', error);
         return {
           response: "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
-          loadingStickerId,
         };
       }
     },
-    async ({ response, loadingStickerId }) => {
-      await deleteLoadingSticker(ctx, loadingStickerId);
+    async ({ response }) => {
       await safeReply(ctx, response, { replyToMessage: true });
       if (ctx.chat?.id) recordReply(ctx.chat.id, queryToProcess);
     }
@@ -709,7 +776,7 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
-  const loadingStickerId = await sendLoadingSticker(ctx);
+  const releaseLoadingIndicator = await acquireChatLoadingIndicator(ctx);
 
   try {
     // Retrieve file metadata from Telegram Bot API
@@ -746,7 +813,6 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
     }
 
     if (!isImageDocument(mimeType, filePath)) {
-      await deleteLoadingSticker(ctx, loadingStickerId);
       await safeReply(
         ctx,
         '⚠️ The uploaded file format is not supported for image analysis. Please send a JPG, PNG, GIF, WebP, BMP, TIFF, SVG, HEIC, or AVIF image.',
@@ -786,7 +852,6 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
         logger.warn('Image moderation API failed, proceeding to vision analysis', { error: modErrMsg });
         // fail-open: if moderation API is down, proceed to vision (or fail-closed if configured)
         if (env.moderationFailClosed) {
-          await deleteLoadingSticker(ctx, loadingStickerId);
           if (isGroup) {
             try { await ctx.deleteMessage(); } catch { /* ignore */ }
           }
@@ -800,7 +865,6 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
       }
 
       if (moderationFlagged) {
-        await deleteLoadingSticker(ctx, loadingStickerId);
         if (isGroup) {
           try {
             await ctx.deleteMessage();
@@ -841,7 +905,6 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
 
     // If caught as inappropriate/nude by multimodal vision or safety filter:
     if (analysisResult.isInappropriate) {
-      await deleteLoadingSticker(ctx, loadingStickerId);
       if (isGroup) {
         try {
           await ctx.deleteMessage();
@@ -865,10 +928,8 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
       return;
     }
 
-    await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, analysisResult.text, { replyToMessage: true });
   } catch (error) {
-    await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);
     const errMsg = error instanceof Error ? error.message : String(error);
     if (/safety|inappropriate|explicit|nude|nsfw|adult|content_filter|blocked|refus/i.test(errMsg)) {
@@ -891,6 +952,8 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
       "I'm temporarily experiencing an issue analyzing this image. Please ensure the image is clear and try again in a few moments.",
       { replyToMessage: true }
     );
+  } finally {
+    await releaseLoadingIndicator();
   }
 }
 
