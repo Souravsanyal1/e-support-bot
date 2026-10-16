@@ -123,7 +123,7 @@ async function callOpenRouterVision(
       temperature: 0.3,
       max_tokens: 600,
     }),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(35000),
   });
 
   if (!res.ok) {
@@ -170,7 +170,7 @@ async function callGeminiVision(
 
   const genConfig: Record<string, unknown> = {
     systemInstruction,
-    maxOutputTokens: 600,
+    maxOutputTokens: 900,
   };
 
   if (!isGemini3OrNewer) genConfig.temperature = 0.3;
@@ -179,11 +179,11 @@ async function callGeminiVision(
       thinkingBudget: 0,
     };
   } else if (isGemini3OrNewer) {
-    genConfig.thinkingConfig = { thinkingLevel: 'low' };
+    genConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   }
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error('Gemini Vision timed out after 15 seconds')), 15000);
+    const t = setTimeout(() => reject(new Error('Gemini Vision timed out after 35 seconds')), 35000);
     if (t.unref) t.unref();
   });
 

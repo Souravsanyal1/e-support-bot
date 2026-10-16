@@ -17,9 +17,7 @@ import {
   sendTypingAction,
   sendLoadingSticker,
   deleteLoadingSticker,
-  showReplyStickerTemporarily,
   scheduleAutoDelete,
-  sleep,
 } from '../utils/telegram';
 import { logger } from '../utils/logger';
 import {
@@ -48,6 +46,63 @@ const OFFICIAL_COMMUNITY_GROUP_ID = '@EliteForceCommunity';
 const ADMIN_LIST_QUERY = /\b(admins?|administrators?|moderators?)\b/i;
 const OWNER_QUERY = /\b(?:who(?:\s+is)?\s+(?:the\s+)?|show\s+(?:me\s+)?(?:the\s+)?|name\s+of\s+(?:the\s+)?|(?:the\s+)?)?(?:owner|founder|proprietor)\b|\b(?:owner|founder|proprietor)(?:'s)?\s+(?:(?:telegram|user|account)\s+)?id\b|\b(?:id|numeric id)\s+of\s+(?:the\s+)?(?:owner|founder|proprietor)\b/i;
 const chatReplyQueues = new Map<string, Promise<void>>();
+const chatGenerationSlots = new Map<string, { active: number; waiters: Array<() => void> }>();
+const MAX_PARALLEL_GROUP_GENERATIONS = 3;
+
+async function withChatGenerationSlot<T>(
+  chatId: number,
+  maxParallel: number,
+  task: () => Promise<T>
+): Promise<T> {
+  const key = String(chatId);
+  let state = chatGenerationSlots.get(key);
+  if (!state) {
+    state = { active: 0, waiters: [] };
+    chatGenerationSlots.set(key, state);
+  }
+
+  if (state.active >= maxParallel) {
+    await new Promise<void>((resolve) => state!.waiters.push(resolve));
+  } else {
+    state.active += 1;
+  }
+
+  try {
+    return await task();
+  } finally {
+    const next = state.waiters.shift();
+    if (next) next();
+    else state.active -= 1;
+    if (state.active === 0 && state.waiters.length === 0) chatGenerationSlots.delete(key);
+  }
+}
+
+/** Generate replies in parallel, then send each result in its original chat order. */
+async function enqueueGeneratedReply<T>(
+  ctx: Context,
+  generate: () => Promise<T>,
+  deliver: (result: T) => Promise<void>
+): Promise<void> {
+  const chatId = ctx.chat?.id ?? 0;
+  const key = String(chatId);
+  const previous = chatReplyQueues.get(key) ?? Promise.resolve();
+  let releaseTicket!: () => void;
+  const ticket = new Promise<void>((resolve) => { releaseTicket = resolve; });
+  const tracked = previous.catch(() => undefined).then(() => ticket);
+  chatReplyQueues.set(key, tracked);
+
+  // Preserve a single conversation's context order; group members can be
+  // handled concurrently, while their visible answers stay FIFO.
+  const maxParallel = ctx.chat?.type === 'private' ? 1 : MAX_PARALLEL_GROUP_GENERATIONS;
+  try {
+    const result = await withChatGenerationSlot(chatId, maxParallel, generate);
+    await previous.catch(() => undefined);
+    await deliver(result);
+  } finally {
+    releaseTicket();
+    if (chatReplyQueues.get(key) === tracked) chatReplyQueues.delete(key);
+  }
+}
 
 function enqueueChatReply(chatId: number, task: () => Promise<void>): Promise<void> {
   const key = String(chatId);
@@ -340,12 +395,12 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
     return;
   }
 
-  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
-    await sendTypingAction(ctx);
-    const startTime = Date.now();
-    const loadingStickerId = await sendLoadingSticker(ctx);
-
-    try {
+  void enqueueGeneratedReply(
+    ctx,
+    async () => {
+      await sendTypingAction(ctx);
+      const loadingStickerId = await sendLoadingSticker(ctx);
+      try {
       await syncChannelHistoryWithoutHoldingReply();
       const response = await generateSupportResponse(
         query,
@@ -353,20 +408,20 @@ export async function handleAskCommand(ctx: Context): Promise<void> {
         getRelevantOfficialChannelContext(query),
         ctx.chat?.type === 'private' ? ctx.from?.id : undefined
       );
-
-      const elapsed = Date.now() - startTime;
-      const minDisplayMs = 3000;
-      if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
-
+        return { response, loadingStickerId };
+      } catch (error) {
+        logger.error('Error handling /ask command', error);
+        return {
+          response: "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.",
+          loadingStickerId,
+        };
+      }
+    },
+    async ({ response, loadingStickerId }) => {
       await deleteLoadingSticker(ctx, loadingStickerId);
       await safeReply(ctx, response, { replyToMessage: true });
-      await showReplyStickerTemporarily(ctx);
-    } catch (error) {
-      await deleteLoadingSticker(ctx, loadingStickerId);
-      logger.error('Error handling /ask command', error);
-      await safeReply(ctx, "I'm temporarily experiencing an issue generating an answer. Please try again in a moment.", { replyToMessage: true });
     }
-  });
+  ).catch((error) => logger.error('Failed to deliver /ask reply', error));
 }
 
 /**
@@ -501,12 +556,12 @@ export async function handleTextMessage(
     });
   }
 
-  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
-    await sendTypingAction(ctx);
-    const startTime = Date.now();
-    const loadingStickerId = await sendLoadingSticker(ctx);
-
-    try {
+  void enqueueGeneratedReply(
+    ctx,
+    async () => {
+      await sendTypingAction(ctx);
+      const loadingStickerId = await sendLoadingSticker(ctx);
+      try {
       await syncChannelHistoryWithoutHoldingReply();
       const response = await generateSupportResponse(
         queryToProcess,
@@ -515,21 +570,21 @@ export async function handleTextMessage(
         ctx.chat?.type === 'private' ? ctx.from?.id : undefined,
         isReplyToBot ? ctx.message?.reply_to_message?.text : undefined
       );
-
-      const elapsed = Date.now() - startTime;
-      const minDisplayMs = 3000;
-      if (elapsed < minDisplayMs) await sleep(minDisplayMs - elapsed);
-
+        return { response, loadingStickerId };
+      } catch (error) {
+        logger.error('Error handling direct text message', error);
+        return {
+          response: "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.",
+          loadingStickerId,
+        };
+      }
+    },
+    async ({ response, loadingStickerId }) => {
       await deleteLoadingSticker(ctx, loadingStickerId);
       await safeReply(ctx, response, { replyToMessage: true });
-      await showReplyStickerTemporarily(ctx);
       if (ctx.chat?.id) recordReply(ctx.chat.id, queryToProcess);
-    } catch (error) {
-      await deleteLoadingSticker(ctx, loadingStickerId);
-      logger.error('Error handling direct text message', error);
-      await safeReply(ctx, "I'm having temporary trouble reaching my AI engine. Please ask your question again shortly.", { replyToMessage: true });
     }
-  });
+  ).catch((error) => logger.error('Failed to deliver queued text reply', error));
 }
 
 /**
@@ -538,9 +593,9 @@ export async function handleTextMessage(
  * for valid Elite Force and system/interface images.
  */
 export async function handlePhotoMessage(ctx: Context): Promise<void> {
-  await enqueueChatReply(ctx.chat?.id ?? 0, async () => {
+  void enqueueChatReply(ctx.chat?.id ?? 0, async () => {
     await processPhotoMessage(ctx);
-  });
+  }).catch((error) => logger.error('Failed to process queued photo reply', error));
 }
 
 async function processPhotoMessage(ctx: Context): Promise<void> {
@@ -654,7 +709,6 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
   }
 
   await sendTypingAction(ctx);
-  const startTime = Date.now();
   const loadingStickerId = await sendLoadingSticker(ctx);
 
   try {
@@ -811,16 +865,8 @@ async function processPhotoMessage(ctx: Context): Promise<void> {
       return;
     }
 
-    // Ensure the animated loading sticker is visible for at least 3000ms
-    const elapsed = Date.now() - startTime;
-    const minDisplayMs = 3000;
-    if (elapsed < minDisplayMs) {
-      await sleep(minDisplayMs - elapsed);
-    }
-
     await deleteLoadingSticker(ctx, loadingStickerId);
     await safeReply(ctx, analysisResult.text, { replyToMessage: true });
-    await showReplyStickerTemporarily(ctx);
   } catch (error) {
     await deleteLoadingSticker(ctx, loadingStickerId);
     logger.error('Error handling photo message', error);

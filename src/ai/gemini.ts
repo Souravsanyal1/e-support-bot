@@ -311,9 +311,9 @@ async function callOpenRouter(
       model: modelToUse,
       messages,
       temperature: 0.65,
-      max_tokens: 360,
+      max_tokens: 800,
     }),
-    signal: AbortSignal.timeout(15000),
+    signal: AbortSignal.timeout(30000),
   });
 
   if (!res.ok) {
@@ -340,7 +340,7 @@ async function callOpenRouter(
 }
 
 /**
- * Calls Google Gemini generateContent with 15s timeout protection.
+ * Calls Google Gemini generateContent with bounded timeout protection.
  */
 async function callGemini(
   userPrompt: string,
@@ -370,7 +370,7 @@ async function callGemini(
 
   const genConfig: Record<string, unknown> = {
     systemInstruction,
-    maxOutputTokens: 420,
+    maxOutputTokens: 800,
   };
 
   if (!isGemini3OrNewer) genConfig.temperature = 0.65;
@@ -379,11 +379,11 @@ async function callGemini(
       thinkingBudget: 0,
     };
   } else if (isGemini3OrNewer) {
-    genConfig.thinkingConfig = { thinkingLevel: 'low' };
+    genConfig.thinkingConfig = { thinkingLevel: 'minimal' };
   }
 
   const timeoutPromise = new Promise<never>((_, reject) => {
-    const t = setTimeout(() => reject(new Error('Gemini API timed out after 8 seconds')), 8000);
+    const t = setTimeout(() => reject(new Error('Gemini API timed out after 30 seconds')), 30000);
     if (t.unref) t.unref();
   });
 
